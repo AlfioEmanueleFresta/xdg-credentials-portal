@@ -19,7 +19,7 @@ Footnotes:
 
 ## Motivation
 
-* **Sandboxed Browsers**. A modern solutions is required to allow sandboxed applications (Flatpaks, Snaps) to access U2F and FIDO2 devices, without grantis blanket access to all devices.
+* **Sandboxed Browsers**. A modern solutions is required to allow sandboxed applications (Flatpaks, Snaps) to access U2F and FIDO2 devices, without granting blanket access to all devices.
   * Firefox has now officially been [released on Flathub][firefox-flathub], but is unable to access U2F devices. See [flatpak issue #2764][flatpak-issue]
 
 * **Passwordless Authentication**. FIDO2/WebAuthn brings the promise of a world without passwords, and related security incidents, which is worth pursuing. A platform API would make it easier for applications to support stronger authentication.
