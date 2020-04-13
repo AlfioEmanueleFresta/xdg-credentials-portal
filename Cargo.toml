@@ -1,0 +1,9 @@
+[package]
+name = "xdg-credentials-portal"
+version = "0.1.0"
+authors = ["Alfie Fresta <alfie.fresta@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
