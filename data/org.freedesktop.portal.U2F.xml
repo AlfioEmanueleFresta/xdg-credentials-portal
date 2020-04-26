@@ -1,0 +1,27 @@
+<!DOCTYPE node PUBLIC
+"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+
+<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+  <interface name='org.freedesktop.portal.U2F'>
+
+    <method name="Register">
+      <arg type="s" name="appId" direction="in"/>
+      <arg type="ay" name="challenge" direction="in"/>
+      <arg type="aa{sv}" name="registeredKeys" direction="in"/>
+      <arg type="u" name="timeoutSeconds" direction="in"/>
+
+      <arg type="o" name="handle" direction="out"/>
+    </method>
+
+    <method name="Sign">
+      <arg type="s" name="appId" direction="in"/>
+      <arg type="ay" name="challenge" direction="in"/>
+      <arg type="aa{sv}" name="registeredKeys" direction="in"/>
+      <arg type="u" name="timeoutSeconds" direction="in"/>
+
+      <arg type="o" name="handle" direction="out"/>
+    </method>
+
+  </interface>
+</node>

@@ -3,7 +3,23 @@ name = "xdg-credentials-portal"
 version = "0.1.0"
 authors = ["Alfie Fresta <alfie.fresta@gmail.com>"]
 edition = "2018"
+default-run = "portal"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "backend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "portal"
+path = "src/main.rs"
 
 [dependencies]
+authenticator = "0.2.12"
+base64-url = "1.1.13"
+dbus = "0.8.2"
+dbus-codegen = "0.5.0"
+env_logger = "0.7.1"
+log = "0.4"
+maplit = "1.0.2"
+sha2 = "0.8.1"
+uuid = { version = "0.8.1", features = ["serde", "v4"] }

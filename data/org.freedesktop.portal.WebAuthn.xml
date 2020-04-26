@@ -1,0 +1,36 @@
+<!DOCTYPE node PUBLIC
+"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+
+<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+  <interface name='org.freedesktop.portal.WebAuthn'>
+
+    <method name="MakeCredential">
+      <arg type="s" name="origin" direction="in"/>
+      <arg type="a{sv}" name="relyingParty" direction="in"/>
+      <arg type="a{sv}" name="user" direction="in"/>
+      <arg type="ay" name="challenge" direction="in"/>
+      <arg type="aa{sv}" name="pubKeyCredParams" direction="in"/>
+      <arg type="u" name="timeout" direction="in"/>
+      <arg type="aa{sv}" name="excludeCredentials" direction="in"/>
+      <arg type="a{sv}" name="authenticatorSelection" direction="in"/>
+      <arg type="s" name="attestation" direction="in"/>
+      <arg type="a{sv}" name="extensions" direction="in"/>
+
+      <arg type="o" name="handle" direction="out"/>
+    </method>
+
+    <method name="GetAssertion">
+      <arg type="s" name="origin" direction="in"/>
+      <arg type="ay" name="challenge" direction="in"/>
+      <arg type="u" name="timeout" direction="in"/>
+      <arg type="s" name="relyingPartyId" direction="in"/>
+      <arg type="aa{sv}" name="allowCredentials" direction="in"/>
+      <arg type="s" name="userVerification" direction="in"/>
+      <arg type="a{sv}" name="extensions" direction="in"/>
+
+      <arg type="o" name="handle" direction="out"/>
+    </method>
+
+  </interface>
+</node>
