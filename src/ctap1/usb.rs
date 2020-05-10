@@ -1,6 +1,8 @@
+extern crate async_trait;
 extern crate authenticator;
 extern crate base64_url;
 extern crate sha2;
+extern crate tokio;
 
 use super::protocol::Ctap1Error;
 use super::protocol::{Ctap1RegisterRequest, Ctap1RegisterResponse};
@@ -9,7 +11,8 @@ use super::protocol::{Ctap1SignRequest, Ctap1SignResponse};
 
 use super::Ctap1HidAuthenticator;
 
-use std::sync::mpsc::{channel, Receiver, Sender};
+use async_trait::async_trait;
+use tokio::sync::oneshot::{channel, Receiver, Sender};
 
 use authenticator::{
     AuthenticatorTransports, Error as U2FError, KeyHandle, RegisterFlags, SignFlags, U2FManager,
@@ -17,16 +20,11 @@ use authenticator::{
 
 use sha2::{Digest, Sha256};
 
-pub struct MozillaCtap1HidAuthenticator {
-    u2f_manager: U2FManager,
-}
+pub struct MozillaCtap1HidAuthenticator {}
 
 impl MozillaCtap1HidAuthenticator {
     pub fn new() -> Self {
-        let manager = U2FManager::new().unwrap();
-        Self {
-            u2f_manager: manager,
-        }
+        Self {}
     }
 
     fn build_client_data(challenge: &Vec<u8>, app_id: &String) -> (String, Vec<u8>) {
@@ -56,8 +54,13 @@ impl Ctap1RegisteredKey {
     // fn from_key_handle(key_handle: KeyHandle) -> Ctap1RegisteredKey;
 }
 
+#[async_trait]
 impl Ctap1HidAuthenticator for MozillaCtap1HidAuthenticator {
-    fn register(&self, request: Ctap1RegisterRequest) -> Result<Ctap1RegisterResponse, Ctap1Error> {
+    async fn register(
+        &self,
+        request: Ctap1RegisterRequest,
+    ) -> Result<Ctap1RegisterResponse, Ctap1Error> {
+        let manager = U2FManager::new().unwrap();
         let flags = RegisterFlags::empty();
         let (client_data, client_data_hash) =
             Self::build_client_data(&request.challenge, &request.app_id);
@@ -72,13 +75,18 @@ impl Ctap1HidAuthenticator for MozillaCtap1HidAuthenticator {
             Sender<Result<Ctap1RegisterResponse, Ctap1Error>>,
             Receiver<Result<Ctap1RegisterResponse, Ctap1Error>>,
         ) = channel();
-        if let Err(u2f_error) = self.u2f_manager.register(
+        if let Err(u2f_error) = manager.register(
             flags,
             (request.timeout_seconds * 1000).into(),
             request.challenge,
             client_data_hash,
             key_handles,
             move |rv| {
+                if let Err(_) = rv {
+                    tx.send(Err(Ctap1Error::Timeout)).unwrap();
+                    return;
+                };
+
                 let registration_data = rv.unwrap();
 
                 let response = Ctap1RegisterResponse {
@@ -96,13 +104,11 @@ impl Ctap1HidAuthenticator for MozillaCtap1HidAuthenticator {
             }
         }
 
-        match rx.recv() {
-            Ok(result) => Ok(result.unwrap()),
-            Err(_) => Err(Ctap1Error::Timeout),
-        }
+        rx.await.unwrap()
     }
 
-    fn sign(&self, request: Ctap1SignRequest) -> Result<Ctap1SignResponse, Ctap1Error> {
+    async fn sign(&self, request: Ctap1SignRequest) -> Result<Ctap1SignResponse, Ctap1Error> {
+        let manager = U2FManager::new().unwrap();
         let flags = SignFlags::empty();
         let (client_data, client_data_hash) =
             Self::build_client_data(&request.challenge, &request.app_id);
@@ -116,13 +122,18 @@ impl Ctap1HidAuthenticator for MozillaCtap1HidAuthenticator {
             Sender<Result<Ctap1SignResponse, Ctap1Error>>,
             Receiver<Result<Ctap1SignResponse, Ctap1Error>>,
         ) = channel();
-        if let Err(u2f_error) = self.u2f_manager.sign(
+        if let Err(u2f_error) = manager.sign(
             flags,
             (request.timeout_seconds * 1000).into(),
             request.challenge,
             vec![client_data_hash],
             key_handles,
             move |rv| {
+                if let Err(_) = rv {
+                    tx.send(Err(Ctap1Error::Timeout)).unwrap();
+                    return;
+                };
+
                 let (_, key_handle, signature_data) = rv.unwrap();
                 let response = Ctap1SignResponse {
                     key_handle,
@@ -139,9 +150,6 @@ impl Ctap1HidAuthenticator for MozillaCtap1HidAuthenticator {
             }
         }
 
-        match rx.recv() {
-            Ok(result) => Ok(result.unwrap()),
-            Err(_) => Err(Ctap1Error::Timeout),
-        }
+        rx.await.unwrap()
     }
 }

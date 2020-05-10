@@ -1,18 +1,19 @@
 mod ui;
 
 extern crate log;
+extern crate tokio;
 
 use backend::ctap1::protocol::{Ctap1RegisterRequest, Ctap1SignRequest};
 use backend::{AuthenticatorBackend, LocalAuthenticatorBackend};
 use dbus::blocking::Connection;
-use std::time::Duration;
 use ui::{NotificationPortalUI, UI};
 
 use log::{info, warn};
 
 // TODO: portal API (d-bus session service)
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Connect to the session bus, and initialise the UI
@@ -38,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         warn!("User cancelled the request.");
     })?;
     let register_request = Ctap1RegisterRequest::new_u2f_v2(&APP_ID, &challenge, vec![], TIMEOUT);
-    let response = authenticator.register(register_request).unwrap();
+    let response = authenticator.register(register_request).await.unwrap();
     ui.cancel(dialog)?;
     println!("Response: {:?}", response);
 
@@ -49,12 +50,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dialog = ui.confirm_u2f_usb_sign(APP_ID, TIMEOUT, |_| {
         warn!("User cancelled the request.");
     })?;
-    let response = authenticator.sign(sign_request).unwrap();
+    let response = authenticator.sign(sign_request).await.unwrap();
     ui.cancel(dialog)?;
     println!("Response: {:?}", response);
 
-    // Listen to incoming signals forever.
-    loop {
-        session_bus.process(Duration::from_millis(1000))?;
-    }
+    Ok(())
 }
