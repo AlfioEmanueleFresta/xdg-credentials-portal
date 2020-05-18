@@ -1,10 +1,13 @@
-pub mod protocol;
-pub mod usb;
+mod protocol;
+mod usb;
+
+extern crate async_trait;
 
 use async_trait::async_trait;
-use protocol::Ctap1Error;
-use protocol::{Ctap1RegisterRequest, Ctap1RegisterResponse};
-use protocol::{Ctap1SignRequest, Ctap1SignResponse};
+pub use protocol::Ctap1Error;
+pub use protocol::{Ctap1RegisterRequest, Ctap1RegisterResponse};
+pub use protocol::{Ctap1SignRequest, Ctap1SignResponse};
+pub use usb::MozillaCtap1HidAuthenticator;
 
 #[async_trait]
 pub trait Ctap1HidAuthenticator {

@@ -2,7 +2,7 @@ extern crate backend;
 extern crate base64_url;
 extern crate tokio;
 
-use backend::ctap1::protocol::{Ctap1RegisterRequest, Ctap1SignRequest};
+use backend::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use backend::{AuthenticatorBackend, LocalAuthenticatorBackend};
 
 #[tokio::main]

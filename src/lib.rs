@@ -1,7 +1,6 @@
 pub mod ctap1;
 
-use ctap1::usb::MozillaCtap1HidAuthenticator;
-use ctap1::Ctap1HidAuthenticator;
+use ctap1::{Ctap1HidAuthenticator, MozillaCtap1HidAuthenticator};
 
 #[derive(Debug)]
 pub enum Transport {
