@@ -1,4 +1,5 @@
 mod error;
+mod framing;
 mod gatt;
 
 extern crate blurz;
@@ -9,6 +10,7 @@ use crate::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
 use crate::ops::webauthn::{GetAssertionResponse, MakeCredentialResponse};
 
 use crate::ops::u2f::{RegisterRequest, SignRequest};
+use crate::ops::u2f::{RegisterResponse, SignResponse};
 
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest};
 use crate::proto::ctap2::{Ctap2GetAssertionResponse, Ctap2MakeCredentialResponse};
@@ -22,7 +24,7 @@ use blurz::bluetooth_gatt_descriptor::BluetoothGATTDescriptor;
 use blurz::bluetooth_gatt_service::BluetoothGATTService;
 use blurz::bluetooth_session::BluetoothSession;
 
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::error::Error as StdError;
 
 use self::byteorder::{BigEndian, WriteBytesExt};
@@ -44,6 +46,20 @@ enum FidoRevision {
     V2 = 0x20,
     U2fv12 = 0x40,
     U2fv11 = 0x80,
+}
+
+enum FidoProtocol {
+    FIDO2,
+    U2F,
+}
+
+impl From<FidoRevision> for FidoProtocol {
+    fn from(revision: FidoRevision) -> Self {
+        match revision {
+            FidoRevision::V2 => FidoProtocol::FIDO2,
+            FidoRevision::U2fv11 | FidoRevision::U2fv12 => FidoProtocol::U2F,
+        }
+    }
 }
 
 pub type BleDevicePath = String;
@@ -161,26 +177,53 @@ impl BLEManager {
         Ok(())
     }
 
+    fn _negotiate_protocol(
+        &self,
+        device: &BleDevicePath,
+        allow_fido2: bool,
+        allow_u2f: bool,
+    ) -> Result<Option<FidoProtocol>, Error> {
+        info!(
+            "Protocol negotiation requirements: allow_fido2={}, allow_u2f={}",
+            allow_fido2, allow_u2f
+        );
+        let supported = self._supported_fido_revisions(device)?;
+
+        return if allow_fido2 && supported.contains(&FidoRevision::V2) {
+            self._use_fido_revision(device, FidoRevision::V2);
+            Ok(Some(FidoProtocol::FIDO2))
+        } else if allow_u2f && supported.contains(&FidoRevision::U2fv12) {
+            self._use_fido_revision(device, FidoRevision::U2fv12);
+            Ok(Some(FidoProtocol::U2F))
+        } else if allow_u2f && supported.contains(&FidoRevision::U2fv11) {
+            self._use_fido_revision(device, FidoRevision::U2fv11);
+            Ok(Some(FidoProtocol::U2F))
+        } else {
+            warn!("Negotiation failed");
+            Ok(None)
+        };
+    }
+
     pub async fn webauthn_make_credential(
         &self,
         device: &BleDevicePath,
         op: MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
-        let supported = self._supported_fido_revisions(device)?;
-        return if supported.contains(&FidoRevision::V2) {
-            self._webauthn_make_credential(device, op).await
-        } else if supported.contains(&FidoRevision::U2fv11)
-            || supported.contains(&FidoRevision::U2fv12)
-        {
-            let register_request: RegisterRequest =
-                op.try_into().or(Err(Error::UnsupportedRequestVersion))?;
-            self._u2f_register(device, register_request)
-                .await?
-                .try_into()
-                .or(Err(Error::AuthenticatorError))
-        } else {
-            Err(Error::NegotiationFailed)
-        };
+        let downgradable = true; // FIXME check!
+        let protocol = self._negotiate_protocol(device, true, downgradable)?;
+
+        match protocol {
+            Some(FidoProtocol::FIDO2) => self._webauthn_make_credential(device, op).await,
+            Some(FidoProtocol::U2F) => {
+                let register_request: RegisterRequest =
+                    op.try_into().or(Err(Error::UnsupportedRequestVersion))?;
+                self._u2f_register(device, register_request)
+                    .await?
+                    .try_into()
+                    .or(Err(Error::AuthenticatorError))
+            }
+            None => Err(Error::NegotiationFailed),
+        }
     }
 
     pub async fn webauthn_get_assertion(
@@ -188,21 +231,47 @@ impl BLEManager {
         device: &BleDevicePath,
         op: GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error> {
-        let supported = self._supported_fido_revisions(&device)?;
-        return if supported.contains(&FidoRevision::V2) {
-            self._webauthn_get_assertion(device, op).await
-        } else if supported.contains(&FidoRevision::U2fv11)
-            || supported.contains(&FidoRevision::U2fv12)
-        {
-            let sign_request: SignRequest =
-                op.try_into().or(Err(Error::UnsupportedRequestVersion))?;
-            self._u2f_sign(device, sign_request)
-                .await?
-                .try_into()
-                .or(Err(Error::AuthenticatorError))
-        } else {
-            Err(Error::NegotiationFailed)
-        };
+        let downgradable = true; // FIXME check!
+        let protocol = self._negotiate_protocol(device, true, downgradable)?;
+
+        match protocol {
+            Some(FidoProtocol::FIDO2) => self._webauthn_get_assertion(device, op).await,
+            Some(FidoProtocol::U2F) => {
+                let sign_request: SignRequest =
+                    op.try_into().or(Err(Error::UnsupportedRequestVersion))?;
+                self._u2f_sign(device, sign_request)
+                    .await?
+                    .try_into()
+                    .or(Err(Error::AuthenticatorError))
+            }
+            None => Err(Error::NegotiationFailed),
+        }
+    }
+
+    pub async fn u2f_register(
+        &self,
+        device: &BleDevicePath,
+        op: RegisterRequest,
+    ) -> Result<RegisterResponse, Error> {
+        let protocol = self._negotiate_protocol(device, false, true)?;
+
+        match protocol {
+            Some(FidoProtocol::U2F) => self._u2f_register(device, op).await,
+            _ => Err(Error::NegotiationFailed),
+        }
+    }
+
+    pub async fn u2f_sign(
+        &self,
+        device: &BleDevicePath,
+        op: SignRequest,
+    ) -> Result<SignResponse, Error> {
+        let protocol = self._negotiate_protocol(device, false, true)?;
+
+        match protocol {
+            Some(FidoProtocol::U2F) => self._u2f_sign(device, op).await,
+            _ => Err(Error::NegotiationFailed),
+        }
     }
 
     async fn _webauthn_make_credential(
@@ -247,42 +316,4 @@ enum Ctap2BleCommand {
     Msg = 0x83,
     Cancel = 0xBE,
     Error = 0xBF,
-}
-
-type BleFrame = Vec<BleFragment>;
-type BleFragment = Vec<u8>;
-
-trait AsBleFrame {
-    fn as_ble_frame(self, max_fragment_length: usize) -> Result<BleFrame, Box<dyn StdError>>;
-}
-
-// TODO CTAP1 operation downgrade to CTAP1
-// CBOR and ADPU, both as bleFrame (tryInto)
-impl AsBleFrame for Vec<u8> {
-    // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-framing-fragmentation
-    fn as_ble_frame(self, max_fragment_length: usize) -> Result<BleFrame, Box<dyn StdError>> {
-        let length = self.len() as u16;
-        let mut message = self.into_iter().peekable();
-        let mut frame = vec![];
-
-        // Initial fragment
-        let mut fragment = vec![Ctap2BleCommand::Msg as u8];
-        fragment.write_u16::<BigEndian>(length)?;
-        let mut chunk: Vec<u8> = message.by_ref().take(max_fragment_length - 3).collect();
-        fragment.append(&mut chunk);
-        frame.push(fragment);
-
-        // Sequence fragments
-        let mut seq: u8 = 0;
-        while message.peek().is_some() {
-            let mut fragment = vec![seq];
-            let mut chunk: Vec<u8> = message.by_ref().take(max_fragment_length - 1).collect();
-            fragment.append(&mut chunk);
-            frame.push(fragment);
-            seq += 1;
-        }
-
-        debug!("Ctap2Operatoin::as_ble_frame: {:?}", frame);
-        Ok(frame)
-    }
 }

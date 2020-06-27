@@ -1,6 +1,6 @@
 use std::io::{Error as IOError, ErrorKind as IOErrorKind};
 
-use super::protocol::{Ctap1RegisterRequest, Ctap1SignRequest};
+use crate::proto::ctap1::Ctap1RegisterRequest;
 
 const APDU_SHORT_MAX_DATA: usize = 256;
 
