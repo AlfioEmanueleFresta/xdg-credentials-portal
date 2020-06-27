@@ -7,6 +7,7 @@ pub enum Error {
     ConnectionLost,
     NegotiationFailed,
     UnsupportedRequestVersion,
+    InvalidData,
     WebauthnError(WebauthnError),
     U2FError(U2FError),
 }

@@ -117,6 +117,15 @@ impl Ctap1SignRequest {
 }
 
 #[derive(Debug)]
+pub struct Ctap1VersionRequest {}
+
+impl Ctap1VersionRequest {
+    pub fn new() -> Ctap1VersionRequest {
+        Ctap1VersionRequest {}
+    }
+}
+
+#[derive(Debug)]
 pub struct Ctap1SignResponse {
     pub key_handle: Vec<u8>,
     pub signature_data: Vec<u8>,

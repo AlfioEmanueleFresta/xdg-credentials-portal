@@ -3,6 +3,7 @@ extern crate base64_url;
 extern crate sha2;
 extern crate tokio;
 
+use crate::proto::ctap1::build_client_data;
 use crate::proto::ctap1::Ctap1Error;
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1RegisterResponse};
 use crate::proto::ctap1::{Ctap1RegisteredKey, Ctap1Version};
@@ -22,24 +23,6 @@ use authenticator::{
     AuthenticatorTransports, Error as MozillaU2FError, KeyHandle, RegisterFlags, SignFlags,
     U2FManager,
 };
-
-use sha2::{Digest, Sha256};
-
-fn build_client_data(challenge: &Vec<u8>, app_id: &String) -> (String, Vec<u8>) {
-    let challenge_base64url = base64_url::encode(&challenge);
-    let version_string = "U2F_V2";
-
-    let client_data = format!(
-        "{{\"challenge\": \"{}\", \"version:\": \"{}\", \"appId\": \"{}\"}}",
-        challenge_base64url, version_string, app_id
-    );
-
-    let mut hasher = Sha256::default();
-    hasher.input(client_data.as_bytes());
-    let client_data_hash = hasher.result().to_vec();
-
-    (client_data, client_data_hash)
-}
 
 impl Ctap1RegisteredKey {
     fn to_key_handle(&self) -> KeyHandle {

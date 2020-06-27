@@ -15,10 +15,12 @@ use crate::ops::u2f::{RegisterResponse, SignResponse};
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest};
 use crate::proto::ctap2::{Ctap2GetAssertionResponse, Ctap2MakeCredentialResponse};
 
-use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
+use crate::proto::ctap1::apdu::ApduRequest;
+use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest, Ctap1VersionRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
 
 use blurz::bluetooth_device::BluetoothDevice;
+use blurz::bluetooth_event::BluetoothEvent;
 use blurz::bluetooth_gatt_characteristic::BluetoothGATTCharacteristic;
 use blurz::bluetooth_gatt_descriptor::BluetoothGATTDescriptor;
 use blurz::bluetooth_gatt_service::BluetoothGATTService;
@@ -26,11 +28,14 @@ use blurz::bluetooth_session::BluetoothSession;
 
 use log::{debug, info, warn};
 use std::error::Error as StdError;
+use std::io::Cursor as IOCursor;
 
-use self::byteorder::{BigEndian, WriteBytesExt};
+use self::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 pub use error::Error;
 use std::collections::HashSet;
 use std::convert::TryInto;
+
+use framing::BleFrame;
 
 pub const TIMEOUT_MS: i32 = 5_000;
 pub const CTAP2_BLE_UUID: &str = "0000fffd-0000-1000-8000-00805f9b34fb";
@@ -79,11 +84,13 @@ fn get_fido_characteristics<'a>(
     device: &'a BleDevicePath,
 ) -> Result<FidoBleEndpoints<'a>, Error> {
     let device = BluetoothDevice::new(&session, String::from(device));
-    debug!(
-        "Connecting to BLE device: {:?} (timeout: {}ms)",
-        device, TIMEOUT_MS
-    );
-    device.connect(TIMEOUT_MS).unwrap();
+    if !device.is_connected().unwrap() {
+        debug!(
+            "Connecting to BLE device: {:?} (timeout: {}ms)",
+            device, TIMEOUT_MS
+        );
+        device.connect(TIMEOUT_MS).unwrap();
+    }
 
     debug!("Found device: {:?}", device);
     let fido_service = device
@@ -204,6 +211,23 @@ impl BLEManager {
         };
     }
 
+    fn _get_max_fragment_length(&self, device: &BleDevicePath) -> Result<usize, Error> {
+        let endpoints = get_fido_characteristics(&self.session, &device)?;
+
+        let max_fragment_size = endpoints
+            .fido_control_point_length
+            .read_value(None)
+            .unwrap();
+
+        if max_fragment_size.len() != 2 {
+            return Err(Error::AuthenticatorError);
+        }
+
+        let mut cursor = IOCursor::new(max_fragment_size);
+        let max_fragment_size = cursor.read_u16::<BigEndian>().unwrap() as usize;
+        Ok(max_fragment_size)
+    }
+
     pub async fn webauthn_make_credential(
         &self,
         device: &BleDevicePath,
@@ -292,10 +316,58 @@ impl BLEManager {
 
     async fn ctap1_register(
         &self,
-        _: &BleDevicePath,
-        _: Ctap1RegisterRequest,
+        device: &BleDevicePath,
+        request: Ctap1RegisterRequest,
     ) -> Result<Ctap1RegisterResponse, Error> {
-        unimplemented!()
+        let endpoints = get_fido_characteristics(&self.session, device)?;
+        let max_fragment_length = self._get_max_fragment_length(device)?;
+
+        let apdu: ApduRequest = request.into();
+        debug!("APDU request: {:?}", apdu);
+
+        let apdu = apdu.raw_long().or(Err(Error::InvalidData))?;
+        let frame = BleFrame::new(max_fragment_length, &apdu);
+        let fragments = frame.fragments().or(Err(Error::AuthenticatorError))?;
+
+        debug!("Registering for notifications...");
+        endpoints
+            .fido_status
+            .start_notify()
+            .or(Err(Error::ConnectionLost))?;
+
+        for fragment in fragments {
+            debug!("Sending fragment: {:?}", fragment);
+            endpoints
+                .fido_control_point
+                .write_value(fragment, None)
+                .or(Err(Error::ConnectionLost))?;
+        }
+
+        let id = endpoints.fido_status.get_id();
+        self.session
+            .incoming(1000)
+            .map(BluetoothEvent::from)
+            .filter(Option::is_some)
+            .flat_map(move |event| match event.unwrap() {
+                BluetoothEvent::Value { object_path, value } => {
+                    if object_path == id {
+                        Some(value)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .for_each(move |e| {
+                info!("Received fragment: {:?}", e);
+            });
+
+        endpoints
+            .fido_status
+            .stop_notify()
+            .or(Err(Error::ConnectionLost));
+
+        Err(Error::AuthenticatorError)
     }
 
     async fn ctap1_sign(

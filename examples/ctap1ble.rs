@@ -1,5 +1,6 @@
 extern crate backend;
 extern crate base64_url;
+extern crate log;
 extern crate tokio;
 
 use blurz::bluetooth_adapter::BluetoothAdapter as Adapter;
@@ -12,6 +13,8 @@ use backend::Platform;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
+
     const APP_ID: &str = "https://foo.example.org";
     const TIMEOUT: u32 = 5; // Seconds
     let challenge: &[u8] =

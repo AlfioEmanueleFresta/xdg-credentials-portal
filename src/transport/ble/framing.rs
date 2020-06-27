@@ -7,9 +7,7 @@ use std::io::{Error as IOError, ErrorKind as IOErrorKind};
 
 const MAX_FRAGMENT_LENGTH: usize = 0xFF_FF;
 
-type BleFragment = Vec<u8>;
-
-struct BleFrame {
+pub struct BleFrame {
     max_fragment_length: usize,
     data: Vec<u8>,
 }
