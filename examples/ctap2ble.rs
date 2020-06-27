@@ -4,14 +4,13 @@ extern crate blurz;
 extern crate log;
 extern crate tokio;
 
-use backend::ctap2::Ctap2BleDevicePath;
-use backend::ctap2::CTAP2_BLE_UUID;
-use backend::ctap2::{
+use backend::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
+use backend::proto::ctap2::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialRpEntity,
     Ctap2PublicKeyCredentialType, Ctap2PublicKeyCredentialUserEntity,
 };
-use backend::ctap2::{Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest};
-use backend::{AuthenticatorBackend, LocalAuthenticatorBackend};
+use backend::transport::ble::{BleDevicePath, CTAP2_BLE_UUID};
+use backend::Platform;
 
 use blurz::bluetooth_adapter::BluetoothAdapter as Adapter;
 use blurz::bluetooth_device::BluetoothDevice as Device;
@@ -25,13 +24,8 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let challenge: &[u8] =
     //    &base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
 
-    let backend = LocalAuthenticatorBackend::new();
-
-    // Enumerate available transports
-    println!("Available transports: {:?}", backend.list_transports());
-
-    // Choose the CTAP2/BLE authenticator
-    let ctap2_ble_authenticator = backend.get_ctap2_ble_authenticator().unwrap();
+    let platform = Platform::new();
+    let ble_manager = platform.get_ble_manager().unwrap();
 
     // Selecting a device
     let bt_session = &Session::create_session(None)?;
@@ -41,7 +35,9 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bt_device = bt_device_ids
         .iter()
         .map(|device_id| Device::new(bt_session, device_id.to_string()))
-        .find(|device| device.get_alias().unwrap() == "U2F FT");
+        .find(|device| {
+            device.get_alias().unwrap() == "U2F FT" || device.get_alias().unwrap() == "KVTAHN"
+        });
 
     if let None = bt_device {
         panic!(
@@ -56,10 +52,10 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         bt_device.get_address()?
     );
 
-    let bt_device: Ctap2BleDevicePath = bt_device.get_id();
+    let bt_device: BleDevicePath = bt_device.get_id();
     //let bt_device = "/org/bluez/hci0/dev_AC_9A_22_B1_82_02".to_owned();
     // Make Credentials ceremony
-    let make_credentials_request = Ctap2MakeCredentialRequest {
+    let make_credentials_request = MakeCredentialRequest {
         origin: "example.org".to_owned(),
         hash: vec![0x01, 0x02],
         relying_party: Ctap2PublicKeyCredentialRpEntity {
@@ -80,8 +76,8 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         extensions_cbor: vec![],
     };
 
-    ctap2_ble_authenticator
-        .make_credentials(bt_device, make_credentials_request)
+    ble_manager
+        .webauthn_make_credential(&bt_device, make_credentials_request)
         .await
         .unwrap();
 
