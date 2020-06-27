@@ -4,12 +4,12 @@ extern crate blurz;
 extern crate log;
 extern crate tokio;
 
-use backend::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
+use backend::ops::webauthn::MakeCredentialRequest;
 use backend::proto::ctap2::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialRpEntity,
     Ctap2PublicKeyCredentialType, Ctap2PublicKeyCredentialUserEntity,
 };
-use backend::transport::ble::{BleDevicePath, CTAP2_BLE_UUID};
+use backend::transport::ble::BleDevicePath;
 use backend::Platform;
 
 use blurz::bluetooth_adapter::BluetoothAdapter as Adapter;

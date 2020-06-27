@@ -1,26 +1,18 @@
 mod error;
 mod gatt;
 
-extern crate async_trait;
 extern crate blurz;
 extern crate byteorder;
 extern crate log;
 
-use async_trait::async_trait;
-
-use crate::ops::webauthn::Error as WebAuthnError;
 use crate::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
 use crate::ops::webauthn::{GetAssertionResponse, MakeCredentialResponse};
 
-use crate::ops::u2f::Error as U2FError;
 use crate::ops::u2f::{RegisterRequest, SignRequest};
-use crate::ops::u2f::{RegisterResponse, SignResponse};
 
-use crate::proto::ctap2::Ctap2Error;
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest};
 use crate::proto::ctap2::{Ctap2GetAssertionResponse, Ctap2MakeCredentialResponse};
 
-use crate::proto::ctap1::Ctap1Error;
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
 
@@ -30,10 +22,8 @@ use blurz::bluetooth_gatt_descriptor::BluetoothGATTDescriptor;
 use blurz::bluetooth_gatt_service::BluetoothGATTService;
 use blurz::bluetooth_session::BluetoothSession;
 
-use byteorder::{BigEndian, WriteBytesExt};
 use log::{debug, info};
 use std::error::Error as StdError;
-use std::io::Error as IOError;
 
 pub use error::Error;
 use std::collections::HashSet;
@@ -175,7 +165,7 @@ impl BLEManager {
         device: &BleDevicePath,
         op: MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
-        let mut supported = self._supported_fido_revisions(device)?;
+        let supported = self._supported_fido_revisions(device)?;
         return if supported.contains(&FidoRevision::V2) {
             self._webauthn_make_credential(device, op).await
         } else if supported.contains(&FidoRevision::U2fv11)
@@ -197,7 +187,6 @@ impl BLEManager {
         device: &BleDevicePath,
         op: GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error> {
-        let revision = self._supported_fido_revisions(&device)?;
         let supported = self._supported_fido_revisions(&device)?;
         return if supported.contains(&FidoRevision::V2) {
             self._webauthn_get_assertion(device, op).await
@@ -217,32 +206,32 @@ impl BLEManager {
 
     async fn _webauthn_make_credential(
         &self,
-        device: &BleDevicePath,
-        request: Ctap2MakeCredentialRequest,
+        _: &BleDevicePath,
+        _: Ctap2MakeCredentialRequest,
     ) -> Result<Ctap2MakeCredentialResponse, Error> {
         unimplemented!()
     }
 
     async fn _webauthn_get_assertion(
         &self,
-        device: &BleDevicePath,
-        request: Ctap2GetAssertionRequest,
+        _: &BleDevicePath,
+        _: Ctap2GetAssertionRequest,
     ) -> Result<Ctap2GetAssertionResponse, Error> {
         unimplemented!()
     }
 
     async fn _u2f_register(
         &self,
-        device: &BleDevicePath,
-        request: Ctap1RegisterRequest,
+        _: &BleDevicePath,
+        _: Ctap1RegisterRequest,
     ) -> Result<Ctap1RegisterResponse, Error> {
         unimplemented!()
     }
 
     async fn _u2f_sign(
         &self,
-        device: &BleDevicePath,
-        request: Ctap1SignRequest,
+        _: &BleDevicePath,
+        _: Ctap1SignRequest,
     ) -> Result<Ctap1SignResponse, Error> {
         unimplemented!();
     }

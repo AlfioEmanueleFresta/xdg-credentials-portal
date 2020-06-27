@@ -2,7 +2,6 @@ pub mod ops;
 pub mod proto;
 pub mod transport;
 
-use sha2::Digest;
 use transport::ble::BLEManager;
 use transport::usb::USBManager;
 

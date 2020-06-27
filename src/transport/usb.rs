@@ -1,4 +1,3 @@
-extern crate async_trait;
 extern crate authenticator;
 extern crate base64_url;
 extern crate sha2;
@@ -17,7 +16,6 @@ use crate::ops::u2f::Error as U2FError;
 use crate::ops::u2f::{RegisterRequest, SignRequest};
 use crate::ops::u2f::{RegisterResponse, SignResponse};
 
-use async_trait::async_trait;
 use tokio::sync::oneshot::{channel, Receiver, Sender};
 
 use authenticator::{
@@ -62,7 +60,7 @@ impl USBManager {
 
     pub async fn webauthn_make_credential(
         &self,
-        op: MakeCredentialRequest,
+        _: MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, WebauthnError> {
         // TODO no ability to negotiate FIDO2 yet - should attempt to downgrade request to U2F.
         unimplemented!()
@@ -70,7 +68,7 @@ impl USBManager {
 
     pub async fn webauthn_get_assertion(
         &self,
-        op: GetAssertionRequest,
+        _: GetAssertionRequest,
     ) -> Result<GetAssertionResponse, WebauthnError> {
         // TODO no ability to negotiate FIDO2 yet - should attempt to downgrade request to U2F.
         unimplemented!()
@@ -123,10 +121,10 @@ async fn _u2f_register(request: Ctap1RegisterRequest) -> Result<Ctap1RegisterRes
             tx.send(Ok(response)).unwrap();
         },
     ) {
-        match u2f_error {
-            MozillaU2FError::NotAllowed => return Err(Ctap1Error::BadRequest),
-            _ => return Err(Ctap1Error::OtherError),
-        }
+        return match u2f_error {
+            MozillaU2FError::NotAllowed => Err(Ctap1Error::BadRequest),
+            _ => Err(Ctap1Error::OtherError),
+        };
     }
 
     rx.await.unwrap()

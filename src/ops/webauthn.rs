@@ -57,7 +57,7 @@ impl TryInto<Ctap1RegisterRequest> for MakeCredentialRequest {
 
 impl TryFrom<Ctap1RegisterResponse> for MakeCredentialResponse {
     type Error = ();
-    fn try_from(response: Ctap1RegisterResponse) -> Result<Self, Self::Error> {
+    fn try_from(_: Ctap1RegisterResponse) -> Result<Self, Self::Error> {
         unimplemented!()
     }
 }
@@ -73,7 +73,7 @@ impl TryInto<Ctap1SignRequest> for GetAssertionRequest {
 impl TryFrom<Ctap1SignResponse> for GetAssertionResponse {
     type Error = ();
 
-    fn try_from(response: Ctap1SignResponse) -> Result<Self, Self::Error> {
+    fn try_from(_: Ctap1SignResponse) -> Result<Self, Self::Error> {
         unimplemented!()
     }
 }

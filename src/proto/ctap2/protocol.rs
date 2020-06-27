@@ -1,9 +1,6 @@
 extern crate serde;
 extern crate serde_cbor;
 
-use std::collections::HashMap;
-use std::io;
-
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use serde_cbor::ser::to_vec;
 use serde_cbor::Result as CBORResult;
