@@ -25,6 +25,7 @@ use blurz::bluetooth_session::BluetoothSession;
 use log::{debug, info};
 use std::error::Error as StdError;
 
+use self::byteorder::{BigEndian, WriteBytesExt};
 pub use error::Error;
 use std::collections::HashSet;
 use std::convert::TryInto;
@@ -257,32 +258,31 @@ trait AsBleFrame {
 
 // TODO CTAP1 operation downgrade to CTAP1
 // CBOR and ADPU, both as bleFrame (tryInto)
-// impl AsBleFrame for Ctap2Operation {
-//     // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-framing-fragmentation
-//     fn as_ble_frame(self, max_fragment_length: usize) -> Result<BleFrame, Bod<dyn StdError>> {
-//         let message = self.serialize().unwrap();
-//         let length = message.len() as u16;
-//         let mut message = message.into_iter().peekable();
-//         let mut frame = vec![];
-//
-//         // Initial fragment
-//         let mut fragment = vec![Ctap2BleCommand::Msg as u8];
-//         fragment.write_u16::<BigEndian>(length)?;
-//         let mut chunk: Vec<u8> = message.by_ref().take(max_fragment_length - 3).collect();
-//         fragment.append(&mut chunk);
-//         frame.push(fragment);
-//
-//         // Sequence fragments
-//         let mut seq: u8 = 0;
-//         while message.peek().is_some() {
-//             let mut fragment = vec![seq];
-//             let mut chunk: Vec<u8> = message.by_ref().take(max_fragment_length - 1).collect();
-//             fragment.append(&mut chunk);
-//             frame.push(fragment);
-//             seq += 1;
-//         }
-//
-//         debug!("Ctap2Operatoin::as_ble_frame: {:?}", frame);
-//         Ok(frame)
-//     }
-// }
+impl AsBleFrame for Vec<u8> {
+    // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-framing-fragmentation
+    fn as_ble_frame(self, max_fragment_length: usize) -> Result<BleFrame, Box<dyn StdError>> {
+        let length = self.len() as u16;
+        let mut message = self.into_iter().peekable();
+        let mut frame = vec![];
+
+        // Initial fragment
+        let mut fragment = vec![Ctap2BleCommand::Msg as u8];
+        fragment.write_u16::<BigEndian>(length)?;
+        let mut chunk: Vec<u8> = message.by_ref().take(max_fragment_length - 3).collect();
+        fragment.append(&mut chunk);
+        frame.push(fragment);
+
+        // Sequence fragments
+        let mut seq: u8 = 0;
+        while message.peek().is_some() {
+            let mut fragment = vec![seq];
+            let mut chunk: Vec<u8> = message.by_ref().take(max_fragment_length - 1).collect();
+            fragment.append(&mut chunk);
+            frame.push(fragment);
+            seq += 1;
+        }
+
+        debug!("Ctap2Operatoin::as_ble_frame: {:?}", frame);
+        Ok(frame)
+    }
+}

@@ -1,3 +1,4 @@
+mod apdu;
 mod protocol;
 
 pub use self::protocol::Ctap1RegisteredKey;
