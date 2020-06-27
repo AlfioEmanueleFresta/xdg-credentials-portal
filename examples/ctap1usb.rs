@@ -2,8 +2,8 @@ extern crate backend;
 extern crate base64_url;
 extern crate tokio;
 
-use backend::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
-use backend::{AuthenticatorBackend, LocalAuthenticatorBackend};
+use backend::ops::u2f::{RegisterRequest, SignRequest};
+use backend::Platform;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,28 +12,22 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let challenge: &[u8] =
         &base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
 
-    let backend = LocalAuthenticatorBackend::new();
-
-    // Enumerate available transports
-    println!("Available transports: {:?}", backend.list_transports());
+    let platform = Platform::new();
 
     // Choose the CTAP1/USB authenticator
-    let ctap1_hid_authenticator = backend.get_ctap1_hid_authenticator().unwrap();
+    let usb_manager = platform.get_usb_manager().unwrap();
 
     // Registration ceremony
     println!("Registration request sent (timeout: {} seconds).", TIMEOUT);
-    let register_request = Ctap1RegisterRequest::new_u2f_v2(&APP_ID, &challenge, vec![], TIMEOUT);
-    let response = ctap1_hid_authenticator
-        .register(register_request)
-        .await
-        .unwrap();
+    let register_request = RegisterRequest::new_u2f_v2(&APP_ID, &challenge, vec![], TIMEOUT);
+    let response = usb_manager.u2f_register(register_request).await?;
     println!("Response: {:?}", response);
 
     // Signature ceremony
     println!("Signature request sent (timeout: {} seconds).", TIMEOUT);
     let new_key = response.as_registered_key()?;
-    let sign_request = Ctap1SignRequest::new(&APP_ID, &challenge, vec![new_key], TIMEOUT);
-    let response = ctap1_hid_authenticator.sign(sign_request).await.unwrap();
+    let sign_request = SignRequest::new(&APP_ID, &challenge, vec![new_key], TIMEOUT);
+    let response = usb_manager.u2f_sign(sign_request).await?;
     println!("Response: {:?}", response);
 
     Ok(())

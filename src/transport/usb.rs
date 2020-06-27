@@ -60,25 +60,27 @@ impl USBManager {
         Some(USBManager {})
     }
 
-    async fn webauthn_make_credential(
+    pub async fn webauthn_make_credential(
         &self,
         op: MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, WebauthnError> {
+        // TODO no ability to negotiate FIDO2 yet - should attempt to downgrade request to U2F.
         unimplemented!()
     }
 
-    async fn webauthn_get_assertion(
+    pub async fn webauthn_get_assertion(
         &self,
         op: GetAssertionRequest,
     ) -> Result<GetAssertionResponse, WebauthnError> {
+        // TODO no ability to negotiate FIDO2 yet - should attempt to downgrade request to U2F.
         unimplemented!()
     }
 
-    async fn u2f_register(&self, op: RegisterRequest) -> Result<RegisterResponse, U2FError> {
+    pub async fn u2f_register(&self, op: RegisterRequest) -> Result<RegisterResponse, U2FError> {
         _u2f_register(op.into()).await.map_err(|e| e.into())
     }
 
-    async fn u2f_sign(&self, op: SignRequest) -> Result<SignResponse, U2FError> {
+    pub async fn u2f_sign(&self, op: SignRequest) -> Result<SignResponse, U2FError> {
         _u2f_sign(op.into()).await.map_err(|e| e.into())
     }
 }
