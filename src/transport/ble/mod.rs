@@ -213,11 +213,11 @@ impl BLEManager {
         let protocol = self._negotiate_protocol(device, true, downgradable)?;
 
         match protocol {
-            Some(FidoProtocol::FIDO2) => self._webauthn_make_credential(device, op).await,
+            Some(FidoProtocol::FIDO2) => self.ctap2_make_credential(device, op).await,
             Some(FidoProtocol::U2F) => {
                 let register_request: RegisterRequest =
                     op.try_into().or(Err(Error::UnsupportedRequestVersion))?;
-                self._u2f_register(device, register_request)
+                self.ctap1_register(device, register_request)
                     .await?
                     .try_into()
                     .or(Err(Error::AuthenticatorError))
@@ -235,11 +235,11 @@ impl BLEManager {
         let protocol = self._negotiate_protocol(device, true, downgradable)?;
 
         match protocol {
-            Some(FidoProtocol::FIDO2) => self._webauthn_get_assertion(device, op).await,
+            Some(FidoProtocol::FIDO2) => self.ctap2_get_assertion(device, op).await,
             Some(FidoProtocol::U2F) => {
                 let sign_request: SignRequest =
                     op.try_into().or(Err(Error::UnsupportedRequestVersion))?;
-                self._u2f_sign(device, sign_request)
+                self.ctap1_sign(device, sign_request)
                     .await?
                     .try_into()
                     .or(Err(Error::AuthenticatorError))
@@ -256,7 +256,7 @@ impl BLEManager {
         let protocol = self._negotiate_protocol(device, false, true)?;
 
         match protocol {
-            Some(FidoProtocol::U2F) => self._u2f_register(device, op).await,
+            Some(FidoProtocol::U2F) => self.ctap1_register(device, op).await,
             _ => Err(Error::NegotiationFailed),
         }
     }
@@ -269,12 +269,12 @@ impl BLEManager {
         let protocol = self._negotiate_protocol(device, false, true)?;
 
         match protocol {
-            Some(FidoProtocol::U2F) => self._u2f_sign(device, op).await,
+            Some(FidoProtocol::U2F) => self.ctap1_sign(device, op).await,
             _ => Err(Error::NegotiationFailed),
         }
     }
 
-    async fn _webauthn_make_credential(
+    async fn ctap2_make_credential(
         &self,
         _: &BleDevicePath,
         _: Ctap2MakeCredentialRequest,
@@ -282,7 +282,7 @@ impl BLEManager {
         unimplemented!()
     }
 
-    async fn _webauthn_get_assertion(
+    async fn ctap2_get_assertion(
         &self,
         _: &BleDevicePath,
         _: Ctap2GetAssertionRequest,
@@ -290,7 +290,7 @@ impl BLEManager {
         unimplemented!()
     }
 
-    async fn _u2f_register(
+    async fn ctap1_register(
         &self,
         _: &BleDevicePath,
         _: Ctap1RegisterRequest,
@@ -298,7 +298,7 @@ impl BLEManager {
         unimplemented!()
     }
 
-    async fn _u2f_sign(
+    async fn ctap1_sign(
         &self,
         _: &BleDevicePath,
         _: Ctap1SignRequest,
