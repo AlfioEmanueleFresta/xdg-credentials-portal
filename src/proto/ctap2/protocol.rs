@@ -5,14 +5,6 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 use serde_cbor::ser::to_vec;
 use serde_cbor::Result as CBORResult;
 
-// TODO(afresta): Split interfaces into WebAuthn and CTAP2 structures, and map between
-//                the two as per CTAP2 spec.
-
-#[derive(Debug)]
-pub enum Ctap2Error {
-    OTHER,
-}
-
 #[derive(Debug)]
 pub struct Ctap2PublicKeyCredentialRpEntity {
     pub id: String,

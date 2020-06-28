@@ -2,8 +2,7 @@ use super::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::cmp::min;
-use std::convert::{TryFrom, TryInto};
-use std::error::Error as StdError;
+use std::convert::TryInto;
 use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
 const MAX_FRAGMENT_LENGTH: usize = 0xFF_FF;
@@ -64,7 +63,7 @@ impl BleFrame {
 
         // Initial fragment
         let cmd: u8 = self.cmd.into();
-        let mut fragment = vec![self.cmd.clone() as u8];
+        let mut fragment = vec![cmd];
         fragment.write_u16::<BigEndian>(length)?;
         let mut chunk: Vec<u8> = message
             .by_ref()

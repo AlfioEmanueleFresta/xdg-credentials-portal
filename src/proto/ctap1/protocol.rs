@@ -1,5 +1,4 @@
 use crate::proto::ctap1::apdu::{ApduResponse, ApduResponseStatus};
-use crate::proto::ctap1::protocol::Ctap1Version::U2fV2;
 use std::convert::TryFrom;
 use std::io::{BufRead, Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Read};
 
@@ -18,15 +17,6 @@ pub enum Ctap1Transport {
 #[derive(Debug)]
 pub enum Ctap1Version {
     U2fV2,
-}
-
-#[derive(Debug)]
-pub enum Ctap1Error {
-    OtherError,
-    BadRequest,
-    ConfigurationUnsupported,
-    DeviceIneligible,
-    Timeout,
 }
 
 #[derive(Debug)]
@@ -116,14 +106,14 @@ impl TryFrom<ApduResponse> for Ctap1RegisterResponse {
         cursor.read_exact(&mut key_handle)?;
 
         let mut remaining = vec![];
-        cursor.read_to_end(&mut remaining);
+        cursor.read_to_end(&mut remaining)?;
 
         let (signature, _) = parse_x509_der(&remaining).or(Err(IOError::new(
             IOErrorKind::InvalidData,
             "Failed to parse X509 attestation data",
         )))?;
         let signature = Vec::from(signature);
-        let mut attestation = Vec::from(&remaining[0..remaining.len() - signature.len()]);
+        let attestation = Vec::from(&remaining[0..remaining.len() - signature.len()]);
 
         Ok(Ctap1RegisterResponse {
             version: Ctap1Version::U2fV2,
@@ -213,7 +203,7 @@ impl TryFrom<ApduResponse> for Ctap1SignResponse {
         let _counter = cursor.read_u32::<BigEndian>()?;
 
         let mut signature = vec![];
-        cursor.read_to_end(&mut signature);
+        cursor.read_to_end(&mut signature)?;
 
         Ok(Ctap1SignResponse {
             user_presence_verified,

@@ -1,4 +1,3 @@
-mod error;
 mod framing;
 mod gatt;
 
@@ -14,9 +13,10 @@ use crate::ops::u2f::{RegisterResponse, SignResponse};
 
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest};
 use crate::proto::ctap2::{Ctap2GetAssertionResponse, Ctap2MakeCredentialResponse};
+use crate::proto::CtapError;
 
 use crate::proto::ctap1::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
-use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest, Ctap1VersionRequest};
+use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
 
 use blurz::bluetooth_device::BluetoothDevice;
@@ -27,17 +27,16 @@ use blurz::bluetooth_gatt_service::BluetoothGATTService;
 use blurz::bluetooth_session::BluetoothSession;
 
 use log::{debug, info, warn};
-use std::error::Error as StdError;
 use std::io::Cursor as IOCursor;
 
-use self::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-pub use error::Error;
+use self::byteorder::{BigEndian, ReadBytesExt};
 use std::collections::HashSet;
 use std::convert::TryInto;
 
 use crate::transport::ble::framing::{BleCommand, BleFrameParser, BleFrameParserResult};
+use crate::transport::error::Error::{Ctap, Transport};
+use crate::transport::error::{Error, TransportError};
 use framing::BleFrame;
-use std::borrow::Borrow;
 
 pub const WAIT_LOOP_MS: u32 = 250;
 pub const TIMEOUT_MS: u32 = 5_000;
@@ -85,14 +84,16 @@ struct FidoBleEndpoints<'a> {
 fn get_fido_characteristics<'a>(
     session: &'a BluetoothSession,
     device: &'a BleDevicePath,
-) -> Result<FidoBleEndpoints<'a>, Error> {
+) -> Result<FidoBleEndpoints<'a>, TransportError> {
     let device = BluetoothDevice::new(&session, String::from(device));
     if !device.is_connected().unwrap() {
         debug!(
             "Connecting to BLE device: {:?} (timeout: {}ms)",
             device, TIMEOUT_MS
         );
-        device.connect(TIMEOUT_MS as i32).unwrap();
+        device
+            .connect(TIMEOUT_MS as i32)
+            .or(Err(TransportError::ConnectionFailed))?;
     }
 
     debug!("Found device: {:?}", device);
@@ -102,7 +103,7 @@ fn get_fido_characteristics<'a>(
         .iter()
         .map(|service_path| BluetoothGATTService::new(&session, service_path.to_owned()))
         .find(|service| service.get_uuid().unwrap() == CTAP2_BLE_UUID)
-        .ok_or(Error::AuthenticatorError)?;
+        .ok_or(TransportError::InvalidEndpoint)?;
 
     debug!("Found fido service: {:?}", fido_service);
     let fido_control_point =
@@ -144,14 +145,12 @@ impl BLEManager {
     ) -> Result<HashSet<FidoRevision>, Error> {
         let endpoints = get_fido_characteristics(&self.session, &device)?;
 
-        debug!("Fetching supported revisions...");
         // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-protocol-overview
         let revision = endpoints
             .fido_service_revision_bitfield
             .read_value(None)
-            .or(Err(Error::AuthenticatorError))?;
-        let bitfield = revision.iter().next().ok_or(Error::AuthenticatorError)?;
-
+            .or(Err(Transport(TransportError::ConnectionLost)))?;
+        let bitfield = revision.iter().next().ok_or(CtapError::Other)?;
         debug!("Supported revision bitfield: {:?}", revision);
 
         let mut supported = HashSet::new();
@@ -182,7 +181,7 @@ impl BLEManager {
         endpoints
             .fido_service_revision_bitfield
             .write_value(vec![ack], None)
-            .unwrap();
+            .or(Err(TransportError::ConnectionLost))?;
 
         info!("Successfully negotiated FIDO revision: {:?}", &revision);
         Ok(())
@@ -201,13 +200,13 @@ impl BLEManager {
         let supported = self._supported_fido_revisions(device)?;
 
         return if allow_fido2 && supported.contains(&FidoRevision::V2) {
-            self._use_fido_revision(device, FidoRevision::V2);
+            self._use_fido_revision(device, FidoRevision::V2)?;
             Ok(Some(FidoProtocol::FIDO2))
         } else if allow_u2f && supported.contains(&FidoRevision::U2fv12) {
-            self._use_fido_revision(device, FidoRevision::U2fv12);
+            self._use_fido_revision(device, FidoRevision::U2fv12)?;
             Ok(Some(FidoProtocol::U2F))
         } else if allow_u2f && supported.contains(&FidoRevision::U2fv11) {
-            self._use_fido_revision(device, FidoRevision::U2fv11);
+            self._use_fido_revision(device, FidoRevision::U2fv11)?;
             Ok(Some(FidoProtocol::U2F))
         } else {
             warn!("Negotiation failed");
@@ -219,10 +218,10 @@ impl BLEManager {
         let max_fragment_size = endpoints
             .fido_control_point_length
             .read_value(None)
-            .unwrap();
+            .or(Err(TransportError::ConnectionLost))?;
 
         if max_fragment_size.len() != 2 {
-            return Err(Error::AuthenticatorError);
+            return Err(Error::Ctap(CtapError::InvalidLength));
         }
 
         let mut cursor = IOCursor::new(max_fragment_size);
@@ -242,13 +241,13 @@ impl BLEManager {
             Some(FidoProtocol::FIDO2) => self.ctap2_make_credential(device, op).await,
             Some(FidoProtocol::U2F) => {
                 let register_request: RegisterRequest =
-                    op.try_into().or(Err(Error::UnsupportedRequestVersion))?;
+                    op.try_into().or(Err(TransportError::NegotiationFailed))?;
                 self.ctap1_register(device, register_request)
                     .await?
                     .try_into()
-                    .or(Err(Error::AuthenticatorError))
+                    .or(Err(Ctap(CtapError::UnsupportedOption)))
             }
-            None => Err(Error::NegotiationFailed),
+            None => Err(Transport(TransportError::NegotiationFailed)),
         }
     }
 
@@ -264,13 +263,13 @@ impl BLEManager {
             Some(FidoProtocol::FIDO2) => self.ctap2_get_assertion(device, op).await,
             Some(FidoProtocol::U2F) => {
                 let sign_request: SignRequest =
-                    op.try_into().or(Err(Error::UnsupportedRequestVersion))?;
+                    op.try_into().or(Err(TransportError::NegotiationFailed))?;
                 self.ctap1_sign(device, sign_request)
                     .await?
                     .try_into()
-                    .or(Err(Error::AuthenticatorError))
+                    .or(Err(Ctap(CtapError::UnsupportedOption)))
             }
-            None => Err(Error::NegotiationFailed),
+            None => Err(Error::Transport(TransportError::NegotiationFailed)),
         }
     }
 
@@ -283,7 +282,7 @@ impl BLEManager {
 
         match protocol {
             Some(FidoProtocol::U2F) => self.ctap1_register(device, op).await,
-            _ => Err(Error::NegotiationFailed),
+            _ => Err(Transport(TransportError::NegotiationFailed)),
         }
     }
 
@@ -296,7 +295,7 @@ impl BLEManager {
 
         match protocol {
             Some(FidoProtocol::U2F) => self.ctap1_sign(device, op).await,
-            _ => Err(Error::NegotiationFailed),
+            _ => Err(Transport(TransportError::NegotiationFailed)),
         }
     }
 
@@ -327,14 +326,9 @@ impl BLEManager {
         let apdu_request: ApduRequest = request.into();
         let apdu_response = self.send_apdu_request(apdu_request, &endpoints, timeout_ms)?;
 
-        let status = apdu_response.status().or(Err(Error::AuthenticatorError))?;
-        match status {
-            ApduResponseStatus::NoError => {}
-            ApduResponseStatus::UserPresenceTestFailed => {
-                warn!("User presence test failed");
-                return Err(Error::UserPresenceTestFailed);
-            }
-            _ => return Err(Error::AuthenticatorError),
+        let status = apdu_response.status().or(Err(CtapError::Other))?;
+        if status != ApduResponseStatus::NoError {
+            return Err(Error::Ctap(CtapError::from(status)));
         }
 
         let response: Ctap1RegisterResponse = apdu_response.try_into().unwrap();
@@ -354,18 +348,9 @@ impl BLEManager {
         let apdu_request: ApduRequest = request.into();
         let apdu_response = self.send_apdu_request(apdu_request, &endpoints, timeout_ms)?;
 
-        let status = apdu_response.status().or(Err(Error::AuthenticatorError))?;
-        match status {
-            ApduResponseStatus::NoError => {}
-            ApduResponseStatus::UserPresenceTestFailed => {
-                warn!("User presence test failed");
-                return Err(Error::UserPresenceTestFailed);
-            }
-            ApduResponseStatus::InvalidKeyHandle => {
-                warn!("Invalid key handle provided");
-                return Err(Error::InvalidKeyHandle);
-            }
-            _ => return Err(Error::AuthenticatorError),
+        let status = apdu_response.status().or(Err(CtapError::Other))?;
+        if status != ApduResponseStatus::NoError {
+            return Err(Error::Ctap(CtapError::from(status)));
         }
 
         let response: Ctap1SignResponse = apdu_response.try_into().unwrap();
@@ -383,7 +368,7 @@ impl BLEManager {
         let max_fragment_length = self._get_max_fragment_length(endpoints)?;
 
         debug!("Sending APDU request: {:?}", request);
-        let request_apdu_packet = request.raw_long().or(Err(Error::InvalidData))?;
+        let request_apdu_packet = request.raw_long().or(Err(TransportError::InvalidFraming))?;
         let request_frame = BleFrame::new(
             Some(max_fragment_length),
             BleCommand::Msg,
@@ -393,15 +378,15 @@ impl BLEManager {
         let response_frame =
             self.send_frame_and_wait_for_response(request_frame, &endpoints, timeout_ms)?;
         match response_frame.cmd {
-            BleCommand::Error => return Err(Error::AuthenticatorError), // Encapsulation layer error
-            BleCommand::Cancel => return Err(Error::AuthenticatorCancel),
-            BleCommand::Keepalive | BleCommand::Ping => return Err(Error::AuthenticatorError), // Unexpected
+            BleCommand::Error => return Err(Error::Transport(TransportError::InvalidFraming)), // Encapsulation layer error
+            BleCommand::Cancel => return Err(Error::Ctap(CtapError::KeepAliveCancel)),
+            BleCommand::Keepalive | BleCommand::Ping => return Err(Error::Ctap(CtapError::Other)), // Unexpected
             BleCommand::Msg => {}
         }
-        let resposne_apdu_packet = &response_frame.data;
-        let response_apdu: ApduResponse = resposne_apdu_packet
+        let response_apdu_packet = &response_frame.data;
+        let response_apdu: ApduResponse = response_apdu_packet
             .try_into()
-            .or(Err(Error::AuthenticatorError))?;
+            .or(Err(TransportError::InvalidFraming))?;
 
         debug!("Received APDU response: {:?}", &response_apdu);
         Ok(response_apdu)
@@ -413,12 +398,12 @@ impl BLEManager {
         endpoints: &FidoBleEndpoints,
         timeout_ms: u32,
     ) -> Result<BleFrame, Error> {
-        let fragments = frame.fragments().or(Err(Error::AuthenticatorError))?;
+        let fragments = frame.fragments().or(Err(TransportError::InvalidFraming))?;
 
         endpoints
             .fido_status
             .start_notify()
-            .or(Err(Error::ConnectionLost))?;
+            .or(Err(TransportError::ConnectionLost))?;
         info!("Registered for notifications (responses)");
 
         for fragment in fragments {
@@ -426,7 +411,7 @@ impl BLEManager {
             endpoints
                 .fido_control_point
                 .write_value(fragment, None)
-                .or(Err(Error::ConnectionLost))?;
+                .or(Err(TransportError::ConnectionLost))?;
         }
 
         let frame = self.wait_for_response(&endpoints, timeout_ms)?;
@@ -434,7 +419,7 @@ impl BLEManager {
         endpoints
             .fido_status
             .start_notify()
-            .or(Err(Error::ConnectionLost))?;
+            .or(Err(TransportError::ConnectionLost))?;
         info!("Unregistered for notifications (responses)");
 
         Ok(frame)
@@ -453,7 +438,9 @@ impl BLEManager {
 
             let mut parser = BleFrameParser::new();
             for fragment in &fragments {
-                let status = parser.update(fragment).or(Err(Error::AuthenticatorError))?;
+                let status = parser
+                    .update(fragment)
+                    .or(Err(TransportError::InvalidFraming))?;
                 match status {
                     BleFrameParserResult::Done => {
                         let frame = parser.frame().unwrap();
@@ -470,7 +457,7 @@ impl BLEManager {
             }
 
             if waited_for > timeout_ms {
-                return Err(Error::Timeout);
+                return Err(Error::Ctap(CtapError::Timeout));
             }
         }
     }

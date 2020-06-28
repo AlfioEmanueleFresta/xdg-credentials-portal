@@ -2,7 +2,6 @@ extern crate async_trait;
 
 mod protocol;
 
-pub use protocol::Ctap2Error;
 pub use protocol::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialDescriptor,
     Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialType,

@@ -1,7 +1,7 @@
 use std::io::{Error as IOError, ErrorKind as IOErrorKind};
 
 use crate::proto::ctap1::protocol::Ctap1VersionRequest;
-use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest, Ctap1Version};
+use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use byteorder::{BigEndian, WriteBytesExt};
 
 const APDU_SHORT_MAX_DATA: usize = 0x100;
@@ -140,7 +140,7 @@ impl From<Ctap1SignRequest> for ApduRequest {
         let mut data = request.challenge.clone();
         let app_id_hash = request.app_id_hash();
         data.extend(app_id_hash);
-        data.write_u8(request.key_handle.len() as u8);
+        data.write_u8(request.key_handle.len() as u8).unwrap();
         data.extend(request.key_handle);
         Self::new(U2F_AUTHENTICATE, p1, 0x00, Some(&data), Some(APDU_SHORT_LE))
     }
