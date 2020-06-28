@@ -114,11 +114,10 @@ async fn _u2f_sign(request: Ctap1SignRequest) -> Result<Ctap1SignResponse, Ctap1
     let manager = U2FManager::new().unwrap();
     let flags = SignFlags::empty();
     let app_id_hash = request.app_id_hash();
-    let key_handles = request
-        .registered_keys
-        .iter()
-        .map(|registered_key| registered_key.to_key_handle())
-        .collect();
+    let key_handle = KeyHandle {
+        credential: request.key_handle.clone(),
+        transports: AuthenticatorTransports::USB,
+    };
 
     let (tx, rx): (
         Sender<Result<Ctap1SignResponse, Ctap1Error>>,
@@ -129,17 +128,17 @@ async fn _u2f_sign(request: Ctap1SignRequest) -> Result<Ctap1SignResponse, Ctap1
         (request.timeout_seconds * 1000).into(),
         request.challenge,
         vec![app_id_hash],
-        key_handles,
+        vec![key_handle],
         move |rv| {
             if let Err(_) = rv {
                 tx.send(Err(Ctap1Error::Timeout)).unwrap();
                 return;
             };
 
-            let (_, key_handle, signature_data) = rv.unwrap();
+            let (_, _, signature) = rv.unwrap();
             let response = Ctap1SignResponse {
-                key_handle,
-                signature_data,
+                user_presence_verified: true,
+                signature,
             };
 
             tx.send(Ok(response)).unwrap();

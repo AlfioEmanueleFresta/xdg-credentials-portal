@@ -3,7 +3,7 @@ use crate::proto::ctap1::protocol::Ctap1Version::U2fV2;
 use std::convert::TryFrom;
 use std::io::{BufRead, Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Read};
 
-use byteorder::ReadBytesExt;
+use byteorder::{BigEndian, ReadBytesExt};
 use sha2::{Digest, Sha256};
 use x509_parser::parse_x509_der;
 
@@ -145,22 +145,25 @@ impl Ctap1RegisterResponse {
 pub struct Ctap1SignRequest {
     pub app_id: String,
     pub challenge: Vec<u8>,
-    pub registered_keys: Vec<Ctap1RegisteredKey>,
+    pub key_handle: Vec<u8>,
     pub timeout_seconds: u32,
+    pub require_user_presence: bool,
 }
 
 impl Ctap1SignRequest {
     pub fn new(
         app_id: &str,
         challenge: &[u8],
-        registered_keys: Vec<Ctap1RegisteredKey>,
+        key_handle: &[u8],
         timeout_seconds: u32,
+        require_user_presence: bool,
     ) -> Ctap1SignRequest {
         Ctap1SignRequest {
             app_id: String::from(app_id),
             challenge: Vec::from(challenge),
-            registered_keys,
+            key_handle: Vec::from(key_handle),
             timeout_seconds,
+            require_user_presence,
         }
     }
 
@@ -182,8 +185,41 @@ impl Ctap1VersionRequest {
 
 #[derive(Debug)]
 pub struct Ctap1SignResponse {
-    pub key_handle: Vec<u8>,
-    pub signature_data: Vec<u8>,
+    pub user_presence_verified: bool,
+    pub signature: Vec<u8>,
+}
+
+impl TryFrom<ApduResponse> for Ctap1SignResponse {
+    type Error = IOError;
+
+    fn try_from(apdu: ApduResponse) -> Result<Self, Self::Error> {
+        if apdu.status()? != ApduResponseStatus::NoError {
+            return Err(IOError::new(
+                IOErrorKind::InvalidInput,
+                "APDU packets need to have status NoError to be converted..",
+            ));
+        }
+
+        let data = apdu.data.ok_or(IOError::new(
+            IOErrorKind::InvalidInput,
+            "Emtpy APDU packet.",
+        ))?;
+
+        let mut cursor = IOCursor::new(data);
+        let user_presence_verified = match cursor.read_u8()? {
+            0x01 => true,
+            _ => false,
+        };
+        let _counter = cursor.read_u32::<BigEndian>()?;
+
+        let mut signature = vec![];
+        cursor.read_to_end(&mut signature);
+
+        Ok(Ctap1SignResponse {
+            user_presence_verified,
+            signature,
+        })
+    }
 }
 
 #[cfg(test)]

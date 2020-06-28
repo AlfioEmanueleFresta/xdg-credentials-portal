@@ -33,7 +33,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     const APP_ID: &str = "https://foo.example.org";
-    const TIMEOUT: u32 = 5; // Seconds
+    const TIMEOUT: u32 = 20; // Seconds
     let challenge = base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
     let client_data = build_client_data(&challenge, APP_ID);
 
@@ -76,7 +76,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Signature ceremony
     println!("Signature request sent (timeout: {} seconds).", TIMEOUT);
     let new_key = response.as_registered_key()?;
-    let sign_request = SignRequest::new(&APP_ID, &challenge, vec![new_key], TIMEOUT);
+    let sign_request = SignRequest::new(&APP_ID, &challenge, &new_key.key_handle, TIMEOUT, true);
     let response = ble_manager.u2f_sign(&device, sign_request).await?;
     println!("Response: {:?}", response);
 

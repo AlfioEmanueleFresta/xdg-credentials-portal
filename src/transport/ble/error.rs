@@ -7,6 +7,7 @@ pub enum Error {
     ConnectionLost,
     NegotiationFailed,
     UnsupportedRequestVersion,
+    InvalidKeyHandle,
     InvalidData,
     Timeout,
     AuthenticatorCancel,

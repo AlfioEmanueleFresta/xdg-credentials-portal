@@ -338,7 +338,38 @@ impl BLEManager {
         }
 
         let response: Ctap1RegisterResponse = apdu_response.try_into().unwrap();
-        info!("Response: {:?}", response);
+        info!("Register response: {:?}", response);
+
+        Ok(response)
+    }
+
+    async fn ctap1_sign(
+        &self,
+        device: &BleDevicePath,
+        request: Ctap1SignRequest,
+    ) -> Result<Ctap1SignResponse, Error> {
+        let endpoints = get_fido_characteristics(&self.session, device)?;
+        let timeout_ms = request.timeout_seconds * 1000;
+
+        let apdu_request: ApduRequest = request.into();
+        let apdu_response = self.send_apdu_request(apdu_request, &endpoints, timeout_ms)?;
+
+        let status = apdu_response.status().or(Err(Error::AuthenticatorError))?;
+        match status {
+            ApduResponseStatus::NoError => {}
+            ApduResponseStatus::UserPresenceTestFailed => {
+                warn!("User presence test failed");
+                return Err(Error::UserPresenceTestFailed);
+            }
+            ApduResponseStatus::InvalidKeyHandle => {
+                warn!("Invalid key handle provided");
+                return Err(Error::InvalidKeyHandle);
+            }
+            _ => return Err(Error::AuthenticatorError),
+        }
+
+        let response: Ctap1SignResponse = apdu_response.try_into().unwrap();
+        info!("Sign response: {:?}", response);
 
         Ok(response)
     }
@@ -464,13 +495,5 @@ impl BLEManager {
             .map(move |e| Vec::from(e))
             .collect();
         fragments
-    }
-
-    async fn ctap1_sign(
-        &self,
-        _: &BleDevicePath,
-        _: Ctap1SignRequest,
-    ) -> Result<Ctap1SignResponse, Error> {
-        unimplemented!();
     }
 }

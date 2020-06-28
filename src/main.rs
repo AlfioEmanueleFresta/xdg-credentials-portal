@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Signature ceremony
     println!("Signature request sent (timeout: {} seconds).", TIMEOUT);
     let new_key = response.as_registered_key()?;
-    let sign_request = SignRequest::new(&APP_ID, &challenge, vec![new_key], TIMEOUT);
+    let sign_request = SignRequest::new(&APP_ID, &challenge, &new_key.key_handle, TIMEOUT, true);
     let dialog = ui.confirm_u2f_usb_sign(APP_ID, TIMEOUT, |_| {
         warn!("User cancelled the request.");
     })?;
