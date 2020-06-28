@@ -1,7 +1,7 @@
 use std::io::{Error as IOError, ErrorKind as IOErrorKind};
 
 use crate::proto::ctap1::protocol::Ctap1VersionRequest;
-use crate::proto::ctap1::{build_client_data, Ctap1RegisterRequest, Ctap1Version};
+use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1Version};
 use byteorder::{BigEndian, WriteBytesExt};
 use sha2::{Digest, Sha256};
 
@@ -118,15 +118,9 @@ impl ApduRequest {
 
 impl From<Ctap1RegisterRequest> for ApduRequest {
     fn from(request: Ctap1RegisterRequest) -> Self {
-        let (_, client_data) = build_client_data(&request.challenge, &request.app_id);
-
-        let mut hasher = Sha256::default();
-        hasher.input(request.app_id.as_bytes());
-        let app_id_hash = hasher.result().to_vec();
-
-        let mut data = Vec::from(client_data);
+        let mut data = request.challenge.clone();
+        let app_id_hash = request.app_id_hash();
         data.extend(app_id_hash);
-
         Self::new(U2F_REGISTER, 0x00, 0x00, Some(&data), Some(APDU_SHORT_LE))
     }
 }

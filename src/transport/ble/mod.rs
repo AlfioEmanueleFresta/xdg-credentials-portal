@@ -15,7 +15,7 @@ use crate::ops::u2f::{RegisterResponse, SignResponse};
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest};
 use crate::proto::ctap2::{Ctap2GetAssertionResponse, Ctap2MakeCredentialResponse};
 
-use crate::proto::ctap1::apdu::ApduRequest;
+use crate::proto::ctap1::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest, Ctap1VersionRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
 
@@ -35,10 +35,12 @@ pub use error::Error;
 use std::collections::HashSet;
 use std::convert::TryInto;
 
-use crate::transport::ble::framing::BleCommand;
+use crate::transport::ble::framing::{BleCommand, BleFrameParser, BleFrameParserResult};
 use framing::BleFrame;
+use std::borrow::Borrow;
 
-pub const TIMEOUT_MS: i32 = 5_000;
+pub const WAIT_LOOP_MS: u32 = 250;
+pub const TIMEOUT_MS: u32 = 5_000;
 pub const CTAP2_BLE_UUID: &str = "0000fffd-0000-1000-8000-00805f9b34fb";
 
 pub const FIDO_CONTROL_POINT_UUID: &str = "f1d0fff1-deaa-ecee-b42f-c9ba7ed623bb";
@@ -90,7 +92,7 @@ fn get_fido_characteristics<'a>(
             "Connecting to BLE device: {:?} (timeout: {}ms)",
             device, TIMEOUT_MS
         );
-        device.connect(TIMEOUT_MS).unwrap();
+        device.connect(TIMEOUT_MS as i32).unwrap();
     }
 
     debug!("Found device: {:?}", device);
@@ -142,6 +144,7 @@ impl BLEManager {
     ) -> Result<HashSet<FidoRevision>, Error> {
         let endpoints = get_fido_characteristics(&self.session, &device)?;
 
+        debug!("Fetching supported revisions...");
         // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-protocol-overview
         let revision = endpoints
             .fido_service_revision_bitfield
@@ -212,9 +215,7 @@ impl BLEManager {
         };
     }
 
-    fn _get_max_fragment_length(&self, device: &BleDevicePath) -> Result<usize, Error> {
-        let endpoints = get_fido_characteristics(&self.session, &device)?;
-
+    fn _get_max_fragment_length(&self, endpoints: &FidoBleEndpoints) -> Result<usize, Error> {
         let max_fragment_size = endpoints
             .fido_control_point_length
             .read_value(None)
@@ -321,22 +322,73 @@ impl BLEManager {
         request: Ctap1RegisterRequest,
     ) -> Result<Ctap1RegisterResponse, Error> {
         let endpoints = get_fido_characteristics(&self.session, device)?;
-        let max_fragment_length = self._get_max_fragment_length(device)?;
+        let timeout_ms = request.timeout_seconds * 1000;
 
-        let apdu: ApduRequest = request.into();
-        debug!("APDU request: {:?}", apdu);
+        let apdu_request: ApduRequest = request.into();
+        let apdu_response = self.send_apdu_request(apdu_request, &endpoints, timeout_ms)?;
 
-        let apdu = apdu.raw_long().or(Err(Error::InvalidData))?;
-        let frame = BleFrame::new(Some(max_fragment_length), &apdu);
-        let fragments = frame
-            .fragments(BleCommand::Msg)
+        let status = apdu_response.status().or(Err(Error::AuthenticatorError))?;
+        match status {
+            ApduResponseStatus::NoError => {}
+            ApduResponseStatus::UserPresenceTestFailed => {
+                warn!("User presence test failed");
+                return Err(Error::UserPresenceTestFailed);
+            }
+            _ => return Err(Error::AuthenticatorError),
+        }
+
+        let response: Ctap1RegisterResponse = apdu_response.try_into().unwrap();
+        info!("Response: {:?}", response);
+
+        Ok(response)
+    }
+
+    fn send_apdu_request(
+        &self,
+        request: ApduRequest,
+        endpoints: &FidoBleEndpoints,
+        timeout_ms: u32,
+    ) -> Result<ApduResponse, Error> {
+        let max_fragment_length = self._get_max_fragment_length(endpoints)?;
+
+        debug!("Sending APDU request: {:?}", request);
+        let request_apdu_packet = request.raw_long().or(Err(Error::InvalidData))?;
+        let request_frame = BleFrame::new(
+            Some(max_fragment_length),
+            BleCommand::Msg,
+            &request_apdu_packet,
+        );
+
+        let response_frame =
+            self.send_frame_and_wait_for_response(request_frame, &endpoints, timeout_ms)?;
+        match response_frame.cmd {
+            BleCommand::Error => return Err(Error::AuthenticatorError), // Encapsulation layer error
+            BleCommand::Cancel => return Err(Error::AuthenticatorCancel),
+            BleCommand::Keepalive | BleCommand::Ping => return Err(Error::AuthenticatorError), // Unexpected
+            BleCommand::Msg => {}
+        }
+        let resposne_apdu_packet = &response_frame.data;
+        let response_apdu: ApduResponse = resposne_apdu_packet
+            .try_into()
             .or(Err(Error::AuthenticatorError))?;
 
-        debug!("Registering for notifications...");
+        debug!("Received APDU response: {:?}", &response_apdu);
+        Ok(response_apdu)
+    }
+
+    fn send_frame_and_wait_for_response(
+        &self,
+        frame: BleFrame,
+        endpoints: &FidoBleEndpoints,
+        timeout_ms: u32,
+    ) -> Result<BleFrame, Error> {
+        let fragments = frame.fragments().or(Err(Error::AuthenticatorError))?;
+
         endpoints
             .fido_status
             .start_notify()
             .or(Err(Error::ConnectionLost))?;
+        info!("Registered for notifications (responses)");
 
         for fragment in fragments {
             debug!("Sending fragment: {:?}", fragment);
@@ -346,9 +398,57 @@ impl BLEManager {
                 .or(Err(Error::ConnectionLost))?;
         }
 
+        let frame = self.wait_for_response(&endpoints, timeout_ms)?;
+
+        endpoints
+            .fido_status
+            .start_notify()
+            .or(Err(Error::ConnectionLost))?;
+        info!("Unregistered for notifications (responses)");
+
+        Ok(frame)
+    }
+
+    fn wait_for_response(
+        &self,
+        endpoints: &FidoBleEndpoints,
+        timeout_ms: u32,
+    ) -> Result<BleFrame, Error> {
+        let mut waited_for = 0;
+        loop {
+            let fragments = self.receive_fragments(endpoints, WAIT_LOOP_MS);
+            waited_for += WAIT_LOOP_MS;
+            info!("Received fragments: {:?}", fragments);
+
+            let mut parser = BleFrameParser::new();
+            for fragment in &fragments {
+                let status = parser.update(fragment).or(Err(Error::AuthenticatorError))?;
+                match status {
+                    BleFrameParserResult::Done => {
+                        let frame = parser.frame().unwrap();
+                        if frame.cmd == BleCommand::Keepalive {
+                            info!("Received Keepalive from authenticator. Ignoring.");
+                            parser.reset();
+                        } else {
+                            info!("Received complete response: {:?}", frame);
+                            return Ok(frame);
+                        }
+                    }
+                    BleFrameParserResult::MoreFragmentsExpected => {}
+                }
+            }
+
+            if waited_for > timeout_ms {
+                return Err(Error::Timeout);
+            }
+        }
+    }
+
+    fn receive_fragments(&self, endpoints: &FidoBleEndpoints, wait_for_ms: u32) -> Vec<Vec<u8>> {
         let id = endpoints.fido_status.get_id();
-        self.session
-            .incoming(1000)
+        let fragments: Vec<Vec<u8>> = self
+            .session
+            .incoming(wait_for_ms)
             .map(BluetoothEvent::from)
             .filter(Option::is_some)
             .flat_map(move |event| match event.unwrap() {
@@ -361,16 +461,9 @@ impl BLEManager {
                 }
                 _ => None,
             })
-            .for_each(move |e| {
-                info!("Received fragment: {:?}", e);
-            });
-
-        endpoints
-            .fido_status
-            .stop_notify()
-            .or(Err(Error::ConnectionLost));
-
-        Err(Error::AuthenticatorError)
+            .map(move |e| Vec::from(e))
+            .collect();
+        fragments
     }
 
     async fn ctap1_sign(

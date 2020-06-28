@@ -2,4 +2,4 @@ mod request;
 mod response;
 
 pub use request::ApduRequest;
-pub use response::ApduResponse;
+pub use response::{ApduResponse, ApduResponseStatus};

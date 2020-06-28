@@ -8,6 +8,9 @@ pub enum Error {
     NegotiationFailed,
     UnsupportedRequestVersion,
     InvalidData,
+    Timeout,
+    AuthenticatorCancel,
+    UserPresenceTestFailed,
     WebauthnError(WebauthnError),
     U2FError(U2FError),
 }

@@ -3,7 +3,6 @@ extern crate base64_url;
 extern crate sha2;
 extern crate tokio;
 
-use crate::proto::ctap1::build_client_data;
 use crate::proto::ctap1::Ctap1Error;
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1RegisterResponse};
 use crate::proto::ctap1::{Ctap1RegisteredKey, Ctap1Version};
@@ -19,10 +18,12 @@ use crate::ops::u2f::{RegisterResponse, SignResponse};
 
 use tokio::sync::oneshot::{channel, Receiver, Sender};
 
+use crate::proto::ctap1::apdu::ApduResponse;
 use authenticator::{
     AuthenticatorTransports, Error as MozillaU2FError, KeyHandle, RegisterFlags, SignFlags,
     U2FManager,
 };
+use std::convert::TryInto;
 
 impl Ctap1RegisteredKey {
     fn to_key_handle(&self) -> KeyHandle {
@@ -69,7 +70,7 @@ impl USBManager {
 async fn _u2f_register(request: Ctap1RegisterRequest) -> Result<Ctap1RegisterResponse, Ctap1Error> {
     let manager = U2FManager::new().unwrap();
     let flags = RegisterFlags::empty();
-    let (client_data, client_data_hash) = build_client_data(&request.challenge, &request.app_id);
+    let app_id_hash = request.app_id_hash();
 
     let key_handles = request
         .registered_keys
@@ -85,7 +86,7 @@ async fn _u2f_register(request: Ctap1RegisterRequest) -> Result<Ctap1RegisterRes
         flags,
         (request.timeout_seconds * 1000).into(),
         request.challenge,
-        client_data_hash,
+        app_id_hash,
         key_handles,
         move |rv| {
             if let Err(_) = rv {
@@ -93,13 +94,9 @@ async fn _u2f_register(request: Ctap1RegisterRequest) -> Result<Ctap1RegisterRes
                 return;
             };
 
-            let registration_data = rv.unwrap();
-
-            let response = Ctap1RegisterResponse {
-                version: Ctap1Version::U2fV2,
-                registration_data,
-                client_data: Vec::from(client_data.as_bytes()),
-            };
+            let registration_data = &rv.unwrap();
+            let apdu: ApduResponse = ApduResponse::new_success(&registration_data);
+            let response: Ctap1RegisterResponse = apdu.try_into().unwrap();
 
             tx.send(Ok(response)).unwrap();
         },
@@ -116,7 +113,7 @@ async fn _u2f_register(request: Ctap1RegisterRequest) -> Result<Ctap1RegisterRes
 async fn _u2f_sign(request: Ctap1SignRequest) -> Result<Ctap1SignResponse, Ctap1Error> {
     let manager = U2FManager::new().unwrap();
     let flags = SignFlags::empty();
-    let (client_data, client_data_hash) = build_client_data(&request.challenge, &request.app_id);
+    let app_id_hash = request.app_id_hash();
     let key_handles = request
         .registered_keys
         .iter()
@@ -131,7 +128,7 @@ async fn _u2f_sign(request: Ctap1SignRequest) -> Result<Ctap1SignResponse, Ctap1
         flags,
         (request.timeout_seconds * 1000).into(),
         request.challenge,
-        vec![client_data_hash],
+        vec![app_id_hash],
         key_handles,
         move |rv| {
             if let Err(_) = rv {
@@ -143,7 +140,6 @@ async fn _u2f_sign(request: Ctap1SignRequest) -> Result<Ctap1SignResponse, Ctap1
             let response = Ctap1SignResponse {
                 key_handle,
                 signature_data,
-                client_data: Vec::from(client_data.as_bytes()),
             };
 
             tx.send(Ok(response)).unwrap();

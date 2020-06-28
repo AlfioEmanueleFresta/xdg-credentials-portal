@@ -1,5 +1,6 @@
 use byteorder::{BigEndian, ReadBytesExt};
-use std::convert::TryFrom;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::convert::{TryFrom, TryInto};
 use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
 #[derive(Debug, PartialEq)]
@@ -9,10 +10,34 @@ pub struct ApduResponse {
     sw2: u8,
 }
 
+#[derive(Debug, IntoPrimitive, TryFromPrimitive, Copy, Clone, PartialEq)]
+#[repr(u16)]
+pub enum ApduResponseStatus {
+    NoError = 0x9000,
+    UserPresenceTestFailed = 0x6985,
+    InvalidKeyHandle = 0x6A80,
+    InvalidRequestLength = 0x6700,
+    InvalidClassByte = 0x6E00,
+    InvalidInstruction = 0x6D00,
+}
+
 impl ApduResponse {
-    fn status(&self) -> u16 {
+    pub fn new_success(data: &[u8]) -> Self {
+        Self {
+            data: Some(Vec::from(data)),
+            sw1: 0x90,
+            sw2: 0x00,
+        }
+    }
+
+    pub fn status(&self) -> Result<ApduResponseStatus, IOError> {
         let mut cursor = IOCursor::new(vec![self.sw1, self.sw2]);
-        cursor.read_u16::<BigEndian>().unwrap() as u16
+        let code = cursor.read_u16::<BigEndian>().unwrap() as u16;
+
+        code.try_into().or(Err(IOError::new(
+            IOErrorKind::InvalidData,
+            format!("Unknown APDU response code returned: {:x}", code),
+        )))
     }
 }
 
@@ -39,23 +64,27 @@ impl TryFrom<&Vec<u8>> for ApduResponse {
 
 #[cfg(test)]
 mod tests {
+    use crate::proto::ctap1::apdu::response::ApduResponseStatus;
     use crate::proto::ctap1::apdu::ApduResponse;
     use std::convert::TryInto;
     use std::io::{Error as IOError, ErrorKind as IOErrorKind};
 
     #[test]
     fn apdu_from_status_only_packet() {
-        let packet: &Vec<u8> = &vec![0xAA, 0xBB];
+        let packet: &Vec<u8> = &vec![0x69, 0x85];
         let apdu: ApduResponse = packet.try_into().unwrap();
-        assert_eq!(apdu.status(), 0xAABB);
+        assert_eq!(
+            apdu.status().unwrap(),
+            ApduResponseStatus::UserPresenceTestFailed
+        );
         assert_eq!(apdu.data, None);
     }
 
     #[test]
     fn apdu_from_full_packet() {
-        let packet: &Vec<u8> = &vec![0x01, 0x02, 0x03, 0xAA, 0xBB];
+        let packet: &Vec<u8> = &vec![0x01, 0x02, 0x03, 0x90, 0x00];
         let apdu: ApduResponse = packet.try_into().unwrap();
-        assert_eq!(apdu.status(), 0xAABB);
+        assert_eq!(apdu.status().unwrap(), ApduResponseStatus::NoError);
         assert_eq!(apdu.data, Some(vec![0x01, 0x02, 0x03]));
     }
 
