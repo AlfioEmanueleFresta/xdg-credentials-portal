@@ -35,6 +35,7 @@ pub use error::Error;
 use std::collections::HashSet;
 use std::convert::TryInto;
 
+use crate::transport::ble::framing::BleCommand;
 use framing::BleFrame;
 
 pub const TIMEOUT_MS: i32 = 5_000;
@@ -326,8 +327,10 @@ impl BLEManager {
         debug!("APDU request: {:?}", apdu);
 
         let apdu = apdu.raw_long().or(Err(Error::InvalidData))?;
-        let frame = BleFrame::new(max_fragment_length, &apdu);
-        let fragments = frame.fragments().or(Err(Error::AuthenticatorError))?;
+        let frame = BleFrame::new(Some(max_fragment_length), &apdu);
+        let fragments = frame
+            .fragments(BleCommand::Msg)
+            .or(Err(Error::AuthenticatorError))?;
 
         debug!("Registering for notifications...");
         endpoints
@@ -377,15 +380,4 @@ impl BLEManager {
     ) -> Result<Ctap1SignResponse, Error> {
         unimplemented!();
     }
-}
-
-// https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-constants
-#[derive(Debug)]
-#[repr(u8)]
-enum Ctap2BleCommand {
-    Ping = 0x81,
-    Keepalive = 0x82,
-    Msg = 0x83,
-    Cancel = 0xBE,
-    Error = 0xBF,
 }

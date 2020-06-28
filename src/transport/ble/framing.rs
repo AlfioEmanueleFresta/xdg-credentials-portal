@@ -1,33 +1,54 @@
-use super::byteorder::{BigEndian, WriteBytesExt};
-use crate::transport::ble::Ctap2BleCommand;
+use super::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 use std::cmp::min;
 use std::error::Error as StdError;
-use std::io::{Error as IOError, ErrorKind as IOErrorKind};
+use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
 const MAX_FRAGMENT_LENGTH: usize = 0xFF_FF;
+const INITIAL_FRAGMENT_HEADER_LENGTH: usize = 3; // 1B op, 2B length
+const INITIAL_FRAGMENT_MIN_LENGTH: usize = INITIAL_FRAGMENT_HEADER_LENGTH;
+const CONT_FRAGMENT_HEADER_LENGTH: usize = 1;
+const CONT_FRAGMENT_MIN_LENGTH: usize = CONT_FRAGMENT_HEADER_LENGTH; // 1B header, 1B data
+
+// https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-constants
+#[derive(Debug)]
+#[repr(u8)]
+pub enum BleCommand {
+    Ping = 0x81,
+    Keepalive = 0x82,
+    Msg = 0x83,
+    Cancel = 0xBE,
+    Error = 0xBF,
+}
 
 pub struct BleFrame {
-    max_fragment_length: usize,
+    max_fragment_length: Option<usize>,
     data: Vec<u8>,
 }
 
 impl BleFrame {
-    pub fn new(max_fragment_length: usize, data: &[u8]) -> Self {
+    pub fn new(max_fragment_length: Option<usize>, data: &[u8]) -> Self {
         Self {
-            max_fragment_length: min(max_fragment_length, MAX_FRAGMENT_LENGTH),
+            max_fragment_length: match max_fragment_length {
+                Some(value) => Some(min(value, MAX_FRAGMENT_LENGTH)),
+                None => None,
+            },
             data: Vec::from(data),
         }
     }
 
     // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-framing-fragmentation
-    pub fn fragments(&self) -> Result<Vec<Vec<u8>>, IOError> {
-        if self.max_fragment_length < 4 {
+    pub fn fragments(&self, command: BleCommand) -> Result<Vec<Vec<u8>>, IOError> {
+        let max_fragment_length = self.max_fragment_length
+            .ok_or(IOError::new(IOErrorKind::InvalidData,
+                                "Unknown maximum fragment length, which is required to encode the frame as a list of fragments."))?;
+
+        if max_fragment_length < 4 {
             return Err(IOError::new(
                 IOErrorKind::InvalidData,
                 format!(
                     "Desired maximum fragment length is unsupported: {}",
-                    self.max_fragment_length
+                    max_fragment_length
                 ),
             ));
         }
@@ -37,11 +58,11 @@ impl BleFrame {
         let mut fragments = vec![];
 
         // Initial fragment
-        let mut fragment = vec![Ctap2BleCommand::Msg as u8];
+        let mut fragment = vec![command as u8];
         fragment.write_u16::<BigEndian>(length)?;
         let mut chunk: Vec<u8> = message
             .by_ref()
-            .take(self.max_fragment_length - 3)
+            .take(max_fragment_length - INITIAL_FRAGMENT_HEADER_LENGTH)
             .collect();
         fragment.append(&mut chunk);
         fragments.push(fragment);
@@ -52,7 +73,7 @@ impl BleFrame {
             let mut fragment = vec![seq];
             let mut chunk: Vec<u8> = message
                 .by_ref()
-                .take(self.max_fragment_length - 1)
+                .take(max_fragment_length - CONT_FRAGMENT_HEADER_LENGTH)
                 .collect();
             fragment.append(&mut chunk);
             fragments.push(fragment);
@@ -60,5 +81,149 @@ impl BleFrame {
         }
 
         Ok(fragments)
+    }
+
+    pub fn payload() {}
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BleFrameParserResult {
+    MoreFragmentsExpected,
+    Done,
+}
+
+#[derive(Debug)]
+pub struct BleFrameParser {
+    fragments: Vec<Vec<u8>>,
+}
+
+impl BleFrameParser {
+    pub fn new() -> Self {
+        Self { fragments: vec![] }
+    }
+
+    pub fn update(&mut self, fragment: &[u8]) -> Result<BleFrameParserResult, IOError> {
+        if (self.fragments.len() == 0 && fragment.len() < INITIAL_FRAGMENT_MIN_LENGTH)
+            || fragment.len() < CONT_FRAGMENT_MIN_LENGTH
+        {
+            return Err(IOError::new(
+                IOErrorKind::InvalidInput,
+                "Fragment length is invalid. 3 bytes are required for an initial fragment, 2 bytes for each continuation fragment."
+            ));
+        }
+
+        self.fragments.push(Vec::from(fragment));
+        return if self.more_fragments_needed() {
+            Ok(BleFrameParserResult::MoreFragmentsExpected)
+        } else {
+            Ok(BleFrameParserResult::Done)
+        };
+    }
+
+    pub fn frame(&self) -> Result<BleFrame, IOError> {
+        if self.more_fragments_needed() {
+            return Err(IOError::new(
+                IOErrorKind::InvalidData,
+                "Frame is not yet complete, more fragments need to be ingested.",
+            ));
+        }
+
+        let mut data = vec![];
+        data.extend(&self.fragments[0][INITIAL_FRAGMENT_HEADER_LENGTH..self.fragments[0].len()]);
+        for cont_fragment in &self.fragments[1..self.fragments.len()] {
+            data.extend_from_slice(
+                &cont_fragment[CONT_FRAGMENT_HEADER_LENGTH..cont_fragment.len()],
+            );
+        }
+
+        Ok(BleFrame::new(None, &data))
+    }
+
+    fn more_fragments_needed(&self) -> bool {
+        if self.fragments.is_empty() {
+            return true;
+        }
+
+        self.expected_bytes().unwrap() > self.data_len()
+    }
+
+    fn expected_bytes(&self) -> Option<usize> {
+        if self.fragments.is_empty() {
+            return None;
+        }
+
+        let mut cursor = IOCursor::new(vec![self.fragments[0][1], self.fragments[0][2]]);
+        Some(cursor.read_u16::<BigEndian>().unwrap() as usize)
+    }
+
+    fn data_len(&self) -> usize {
+        if self.fragments.is_empty() {
+            return 0;
+        }
+
+        let mut data_len = self.fragments[0].len() - INITIAL_FRAGMENT_HEADER_LENGTH;
+        for cont_fragment in &self.fragments[1..self.fragments.len()] {
+            data_len += cont_fragment.len() - CONT_FRAGMENT_HEADER_LENGTH;
+        }
+        data_len
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::transport::ble::framing::{
+        BleCommand, BleFrame, BleFrameParser, BleFrameParserResult,
+    };
+
+    #[test]
+    fn encode_single_fragment() {
+        let frame = BleFrame::new(Some(8), &[0x0A, 0x0B, 0x0C, 0x0D]);
+        let expected: Vec<Vec<u8>> = vec![vec![0x83, 0x00, 0x04, 0x0A, 0x0B, 0x0C, 0x0D]];
+        assert_eq!(frame.fragments(BleCommand::Msg).unwrap(), expected)
+    }
+
+    #[test]
+    fn encode_multiple_frames() {
+        let frame = BleFrame::new(Some(4), &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        let expected: Vec<Vec<u8>> = vec![
+            vec![0x83, 0x00, 0x08, 0x01],
+            vec![0x00, 0x02, 0x03, 0x04],
+            vec![0x01, 0x05, 0x06, 0x07],
+            vec![0x02, 0x08],
+        ];
+        assert_eq!(frame.fragments(BleCommand::Msg).unwrap(), expected)
+    }
+
+    #[test]
+    fn parse_single_fragment() {
+        let mut parser = BleFrameParser::new();
+        assert_eq!(
+            parser
+                .update(&vec![0x83, 0x00, 0x04, 0x0A, 0x0B, 0x0C, 0x0D])
+                .unwrap(),
+            BleFrameParserResult::Done
+        );
+        assert_eq!(parser.frame().unwrap().data, vec![0x0A, 0x0B, 0x0C, 0x0D]);
+    }
+
+    #[test]
+    fn parse_multiple_fragments() {
+        let mut parser = BleFrameParser::new();
+        assert_eq!(
+            parser.update(&vec![0x83, 0x00, 0x05, 0x0A]).unwrap(),
+            BleFrameParserResult::MoreFragmentsExpected
+        );
+        assert_eq!(
+            parser.update(&vec![0x00, 0x0B, 0x0C, 0x0D]).unwrap(),
+            BleFrameParserResult::MoreFragmentsExpected
+        );
+        assert_eq!(
+            parser.update(&vec![0x01, 0x0E]).unwrap(),
+            BleFrameParserResult::Done
+        );
+        assert_eq!(
+            parser.frame().unwrap().data,
+            vec![0x0A, 0x0B, 0x0C, 0x0D, 0x0E]
+        );
     }
 }
