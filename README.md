@@ -62,13 +62,28 @@ Further references:
     - [CTAP 2.1 Review Draft][ctap21]
   - [W3C - Web Authentication API][webauthn]
 
+
+## Backend status
+
+|                       | USB (HID)                             | Bluetooth LE                             | NFC                 | TPM 2.0 (Platform) |
+|-----------------------|---------------------------------------|------------------------------------------|---------------------|--------------------|
+| **FIDO U2F**          | Supported (via authenticator-rs)      | Supported                                |  Planned ([#5](#5)  | Planned ([#4][#4]) |
+| **WebAuthn (FIDO2)**  | In development ([#10][#10])           | In development ([#10][#10], [#10][#3])   |  Planned ([#5](#5)  | Planned ([#4][#4]) |
+
 ## Roadmap
 
-- **Draft Credentials Portal API** (in implementation)
-- **FIDO U2F (CTAP1)** via [authenticator-rs][authenticator-rs] (in implementation)
+
+
+**Backend support**:
+
+- **FIDO U2F (CTAP1)**
+  - **USB** via [authenticator-rs][authenticator-rs]
+  - **Bluetooth Low Energy (BLE)** via Blue-Z D-Bus APIs
+
 - **FIDO2 WebAuthn (CTAP2)**
-  - **USB** via [authenticator-rs][authenticator-rs] - CTAP2 functionality under development in [ctap2][authenticator-rs-ctap2] branch (to be started)
-  - **Bluetooth Low Energy (BLE)** via Blue-Z D-Bus APIs (to be started)
+  - **USB** via [authenticator-rs][authenticator-rs] (initially by downgrading to CTAP1, CTAP2 functionality is under development in the [ctap2][authenticator-rs-ctap2] branch)
+  - **Bluetooth Low Energy (BLE)** via Blue-Z D-Bus APIs
+  - NFC
 
 **Further investigation is needed into:**
 
@@ -82,6 +97,8 @@ Further references:
   - As an example, Android has implemented two APIs: [Fido2ApiClient][android-fido-unprivileged] (unprivileged), and [Fido2PrivilegedApiClient][android-fido-privileged] (privileged) for use by web browsers. The main difference between the two is that the privileged API allows specifying an arbitrary _origin_, whilst the unprivileged API requires [linking your app to your origin][android-fido-unprivileged-cert].
 
 - **PAM, and passwordless login** (long-term goal). A PAM module would allow using FIDO2 for user login purposes, e.g. using the platform authenticator (similar to Windows Hello).
+
+- **Draft Credentials Portal API**
 
 [xdg-portal]: https://flatpak.github.io/xdg-desktop-portal/portal-docs.html
 [xdg-desktop-portal]: https://github.com/flatpak/xdg-desktop-portal
@@ -104,3 +121,7 @@ Further references:
 [android-fido-unprivileged-cert]: https://developers.google.com/identity/fido/android/native-apps#interoperability_with_your_website
 [android-fido-privileged]: https://developers.google.com/android/reference/com/google/android/gms/fido/fido2/Fido2PrivilegedApiClient
 [apple-apis]: https://developer.apple.com/documentation/authenticationservices/aswebauthenticationsession
+[#10]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/10
+[#3]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/3
+[#4]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/4
+[#5]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/5
