@@ -66,6 +66,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let device: BleDevicePath = bt_device.get_id();
+    let device = ble_manager.connect(&device).unwrap();
 
     // Registration ceremony
     println!("Registration request sent (timeout: {} seconds).", TIMEOUT);

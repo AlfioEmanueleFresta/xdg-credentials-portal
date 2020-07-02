@@ -7,6 +7,8 @@ pub enum TransportError {
     InvalidEndpoint,
     InvalidFraming,
     NegotiationFailed,
+    TransportUnavailable,
+    Timeout,
 }
 
 impl std::error::Error for TransportError {}

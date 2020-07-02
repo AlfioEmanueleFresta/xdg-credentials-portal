@@ -1,4 +1,7 @@
-use super::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+extern crate byteorder;
+extern crate num_enum;
+
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::cmp::min;

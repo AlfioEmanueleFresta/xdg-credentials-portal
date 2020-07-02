@@ -54,6 +54,8 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bt_device: BleDevicePath = bt_device.get_id();
     //let bt_device = "/org/bluez/hci0/dev_AC_9A_22_B1_82_02".to_owned();
+    let bt_device = ble_manager.connect(&bt_device).unwrap();
+
     // Make Credentials ceremony
     let make_credentials_request = MakeCredentialRequest {
         origin: "example.org".to_owned(),
