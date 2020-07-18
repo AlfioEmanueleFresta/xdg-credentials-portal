@@ -1,20 +1,9 @@
-extern crate backend;
-extern crate base64_url;
-extern crate blurz;
-extern crate log;
-extern crate tokio;
-
 use backend::ops::webauthn::MakeCredentialRequest;
 use backend::proto::ctap2::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialRpEntity,
     Ctap2PublicKeyCredentialType, Ctap2PublicKeyCredentialUserEntity,
 };
-use backend::transport::ble::BleDevicePath;
-use backend::Platform;
-
-use blurz::bluetooth_adapter::BluetoothAdapter as Adapter;
-use blurz::bluetooth_device::BluetoothDevice as Device;
-use blurz::bluetooth_session::BluetoothSession as Session;
+use backend::transport::ble::{list_devices, webauthn_get_assertion, webauthn_make_credential};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,37 +13,13 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let challenge: &[u8] =
     //    &base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
 
-    let platform = Platform::new();
-    let ble_manager = platform.get_ble_manager().unwrap();
+    // Devices enumeration
+    let devices = list_devices().await?;
+    println!("Found devices: {:?}", devices);
 
     // Selecting a device
-    let bt_session = &Session::create_session(None)?;
-    let bt_adapter = Adapter::init(bt_session)?;
-    //bt_adapter.start_discovery()?;
-    let bt_device_ids = bt_adapter.get_device_list()?;
-    let bt_device = bt_device_ids
-        .iter()
-        .map(|device_id| Device::new(bt_session, device_id.to_string()))
-        .find(|device| {
-            device.get_alias().unwrap() == "U2F FT" || device.get_alias().unwrap() == "KVTAHN"
-        });
-
-    if let None = bt_device {
-        panic!(
-            "BLE pairing and discovery is outside of the scope of this example. Ensure your \
-                BLE authenticator is paired, and try again."
-        )
-    }
-    let bt_device = bt_device.unwrap();
-    println!(
-        "Selected BLE authenticator {} ({})",
-        bt_device.get_alias()?,
-        bt_device.get_address()?
-    );
-
-    let bt_device: BleDevicePath = bt_device.get_id();
-    //let bt_device = "/org/bluez/hci0/dev_AC_9A_22_B1_82_02".to_owned();
-    let bt_device = ble_manager.connect(&bt_device).unwrap();
+    let device = devices.get(0).expect("No FIDO BLE devices found.");
+    println!("Selected BLE authenticator: {}", device.alias());
 
     // Make Credentials ceremony
     let make_credentials_request = MakeCredentialRequest {
@@ -78,8 +43,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         extensions_cbor: vec![],
     };
 
-    ble_manager
-        .webauthn_make_credential(&bt_device, make_credentials_request)
+    webauthn_make_credential(device, make_credentials_request)
         .await
         .unwrap();
 

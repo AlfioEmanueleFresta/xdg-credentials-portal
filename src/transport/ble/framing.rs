@@ -4,7 +4,6 @@ extern crate num_enum;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use std::cmp::min;
 use std::convert::TryInto;
 use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
@@ -25,31 +24,22 @@ pub enum BleCommand {
     Error = 0xBF,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BleFrame {
-    max_fragment_length: Option<usize>,
     pub cmd: BleCommand,
     pub data: Vec<u8>,
 }
 
 impl BleFrame {
-    pub fn new(max_fragment_length: Option<usize>, cmd: BleCommand, data: &[u8]) -> Self {
+    pub fn new(cmd: BleCommand, data: &[u8]) -> Self {
         Self {
-            max_fragment_length: match max_fragment_length {
-                Some(value) => Some(min(value, MAX_FRAGMENT_LENGTH)),
-                None => None,
-            },
             data: Vec::from(data),
             cmd,
         }
     }
 
     // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-framing-fragmentation
-    pub fn fragments(&self) -> Result<Vec<Vec<u8>>, IOError> {
-        let max_fragment_length = self.max_fragment_length
-            .ok_or(IOError::new(IOErrorKind::InvalidData,
-                                "Unknown maximum fragment length, which is required to encode the frame as a list of fragments."))?;
-
+    pub fn fragments(&self, max_fragment_length: usize) -> Result<Vec<Vec<u8>>, IOError> {
         if max_fragment_length < 4 {
             return Err(IOError::new(
                 IOErrorKind::InvalidData,
@@ -146,7 +136,7 @@ impl BleFrameParser {
             );
         }
 
-        Ok(BleFrame::new(None, cmd, &data))
+        Ok(BleFrame::new(cmd, &data))
     }
 
     pub fn reset(&mut self) {
@@ -191,15 +181,14 @@ mod tests {
 
     #[test]
     fn encode_single_fragment() {
-        let frame = BleFrame::new(Some(8), BleCommand::Msg, &[0x0A, 0x0B, 0x0C, 0x0D]);
+        let frame = BleFrame::new(BleCommand::Msg, &[0x0A, 0x0B, 0x0C, 0x0D]);
         let expected: Vec<Vec<u8>> = vec![vec![0x83, 0x00, 0x04, 0x0A, 0x0B, 0x0C, 0x0D]];
-        assert_eq!(frame.fragments().unwrap(), expected)
+        assert_eq!(frame.fragments(8).unwrap(), expected)
     }
 
     #[test]
     fn encode_multiple_frames() {
         let frame = BleFrame::new(
-            Some(4),
             BleCommand::Msg,
             &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
         );
@@ -209,7 +198,7 @@ mod tests {
             vec![0x01, 0x05, 0x06, 0x07],
             vec![0x02, 0x08],
         ];
-        assert_eq!(frame.fragments().unwrap(), expected)
+        assert_eq!(frame.fragments(4).unwrap(), expected)
     }
 
     #[test]

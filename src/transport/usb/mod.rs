@@ -35,36 +35,24 @@ impl Ctap1RegisteredKey {
     // fn from_key_handle(key_handle: KeyHandle) -> Ctap1RegisteredKey;
 }
 
-pub struct USBManager {}
+pub async fn webauthn_make_credential(
+    _: MakeCredentialRequest,
+) -> Result<MakeCredentialResponse, Error> {
+    // TODO no ability to negotiate FIDO2 yet - should attempt to downgrade request to U2F.
+    unimplemented!()
+}
 
-impl USBManager {
-    pub fn new() -> Option<USBManager> {
-        Some(USBManager {})
-    }
+pub async fn webauthn_get_assertion(_: GetAssertionRequest) -> Result<GetAssertionResponse, Error> {
+    // TODO no ability to negotiate FIDO2 yet - should attempt to downgrade request to U2F.
+    unimplemented!()
+}
 
-    pub async fn webauthn_make_credential(
-        &self,
-        _: MakeCredentialRequest,
-    ) -> Result<MakeCredentialResponse, Error> {
-        // TODO no ability to negotiate FIDO2 yet - should attempt to downgrade request to U2F.
-        unimplemented!()
-    }
+pub async fn u2f_register(op: RegisterRequest) -> Result<RegisterResponse, Error> {
+    _u2f_register(op.into()).await.map_err(|e| e.into())
+}
 
-    pub async fn webauthn_get_assertion(
-        &self,
-        _: GetAssertionRequest,
-    ) -> Result<GetAssertionResponse, Error> {
-        // TODO no ability to negotiate FIDO2 yet - should attempt to downgrade request to U2F.
-        unimplemented!()
-    }
-
-    pub async fn u2f_register(&self, op: RegisterRequest) -> Result<RegisterResponse, Error> {
-        _u2f_register(op.into()).await.map_err(|e| e.into())
-    }
-
-    pub async fn u2f_sign(&self, op: SignRequest) -> Result<SignResponse, Error> {
-        _u2f_sign(op.into()).await.map_err(|e| e.into())
-    }
+pub async fn u2f_sign(op: SignRequest) -> Result<SignResponse, Error> {
+    _u2f_sign(op.into()).await.map_err(|e| e.into())
 }
 
 async fn _u2f_register(request: Ctap1RegisterRequest) -> Result<Ctap1RegisterResponse, Error> {

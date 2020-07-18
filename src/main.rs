@@ -4,7 +4,7 @@ extern crate log;
 extern crate tokio;
 
 use backend::ops::u2f::{RegisterRequest, SignRequest};
-use backend::Platform;
+use backend::transport::usb::{u2f_register, u2f_sign};
 
 use dbus::blocking::Connection;
 use ui::{NotificationPortalUI, UI};
@@ -25,10 +25,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let ui = NotificationPortalUI::new(&mut session_bus);
 
-    // Initialise the CTAP1/USB authentication backend
-    let platform = Platform::new();
-    let manager = platform.get_usb_manager().unwrap();
-
     const APP_ID: &str = "https://foo.example.org";
     const TIMEOUT: u32 = 30; // Seconds
     let challenge: &[u8] =
@@ -40,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         warn!("User cancelled the request.");
     })?;
     let register_request = RegisterRequest::new_u2f_v2(&APP_ID, &challenge, vec![], TIMEOUT);
-    let response = manager.u2f_register(register_request).await?;
+    let response = u2f_register(register_request).await?;
     ui.cancel(dialog)?;
     println!("Response: {:?}", response);
 
@@ -51,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dialog = ui.confirm_u2f_usb_sign(APP_ID, TIMEOUT, |_| {
         warn!("User cancelled the request.");
     })?;
-    let response = manager.u2f_sign(sign_request).await?;
+    let response = u2f_sign(sign_request).await?;
     ui.cancel(dialog)?;
     println!("Response: {:?}", response);
 

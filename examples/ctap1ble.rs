@@ -3,13 +3,8 @@ extern crate base64_url;
 extern crate log;
 extern crate tokio;
 
-use blurz::bluetooth_adapter::BluetoothAdapter as Adapter;
-use blurz::bluetooth_device::BluetoothDevice as Device;
-use blurz::bluetooth_session::BluetoothSession as Session;
-
 use backend::ops::u2f::{RegisterRequest, SignRequest};
-use backend::transport::ble::BleDevicePath;
-use backend::Platform;
+use backend::transport::ble::{list_devices, u2f_register, u2f_sign};
 use sha2::{Digest, Sha256};
 
 fn build_client_data(challenge: &Vec<u8>, app_id: &str) -> (String, Vec<u8>) {
@@ -37,41 +32,18 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let challenge = base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
     let (_, client_data_hash) = build_client_data(&challenge, APP_ID);
 
-    let platform = Platform::new();
-    let ble_manager = platform.get_ble_manager().unwrap();
+    // Devices enumeration
+    let devices = list_devices().await?;
+    println!("Found devices: {:?}", devices);
 
     // Selecting a device
-    let bt_session = &Session::create_session(None)?;
-    let bt_adapter = Adapter::init(bt_session)?;
-    //bt_adapter.start_discovery()?;
-    let bt_device_ids = bt_adapter.get_device_list()?;
-    let bt_device = bt_device_ids
-        .iter()
-        .map(|device_id| Device::new(bt_session, device_id.to_string()))
-        .find(|device| {
-            device.get_alias().unwrap() == "U2F FT" || device.get_alias().unwrap() == "KVTAHN"
-        });
-
-    if let None = bt_device {
-        panic!(
-            "BLE pairing and discovery is outside of the scope of this example. Ensure your \
-                BLE authenticator is paired, and try again."
-        )
-    }
-    let bt_device = bt_device.unwrap();
-    println!(
-        "Selected BLE authenticator {} ({})",
-        bt_device.get_alias()?,
-        bt_device.get_address()?
-    );
-
-    let device: BleDevicePath = bt_device.get_id();
-    let device = ble_manager.connect(&device).unwrap();
+    let device = devices.get(0).expect("No FIDO BLE devices found.");
+    println!("Selected BLE authenticator: {}", device.alias());
 
     // Registration ceremony
     println!("Registration request sent (timeout: {} seconds).", TIMEOUT);
     let register_request = RegisterRequest::new_u2f_v2(&APP_ID, &client_data_hash, vec![], TIMEOUT);
-    let response = ble_manager.u2f_register(&device, register_request).await?;
+    let response = u2f_register(device, register_request).await?;
     println!("Response: {:?}", response);
 
     // Signature ceremony
@@ -84,7 +56,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         TIMEOUT,
         true,
     );
-    let response = ble_manager.u2f_sign(&device, sign_request).await?;
+    let response = u2f_sign(device, sign_request).await?;
     println!("Response: {:?}", response);
 
     Ok(())
