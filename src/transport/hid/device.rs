@@ -5,7 +5,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct FidoDevice {
-    hidapi_device: DeviceInfo,
+    pub hidapi_device: DeviceInfo,
 }
 
 impl From<&DeviceInfo> for FidoDevice {
