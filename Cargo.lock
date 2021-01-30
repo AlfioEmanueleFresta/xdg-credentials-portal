@@ -1368,6 +1368,7 @@ dependencies = [
  "async-trait",
  "authenticator",
  "base64-url",
+ "bitflags 1.2.1",
  "blurz",
  "byteorder",
  "dbus 0.8.3",

@@ -3,6 +3,7 @@ extern crate log;
 extern crate tokio;
 
 use backend::transport::hid::{list_devices, wink};
+use log::info;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,9 +11,11 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let devices = list_devices().await?;
 
-    for device in devices {
-        println!("Found device: {:}", device);
+    info!("Found {} devices.", devices.len());
+    for device in &devices {
+        info!("Winking device: {}", device);
         wink(&device).await?;
     }
+
     return Ok(());
 }

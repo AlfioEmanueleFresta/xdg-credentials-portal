@@ -1,3 +1,4 @@
+extern crate bitflags;
 extern crate log;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
@@ -13,6 +14,14 @@ use crate::transport::error::{Error, TransportError};
 const INIT_NONCE_LEN: usize = 8;
 const INIT_PAYLOAD_LEN: usize = 17;
 
+bitflags! {
+    pub struct Caps: u8 {
+        const WINK = 0x01;
+        const CBOR = 0x04;
+        const NO_MSG = 0x08;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct InitResponse {
     pub cid: u32,
@@ -20,11 +29,11 @@ pub struct InitResponse {
     pub version_major: u8,
     pub version_minor: u8,
     pub version_build: u8,
-    pub capabilities: u8,
+    pub caps: Caps,
 }
 
 pub async fn init(device: &FidoDevice) -> Result<InitResponse, Error> {
-    let nonce = vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]; // FIXME
+    let nonce = vec![0x42, 0x41, 0x62, 0xA3, 0x04, 0x04, 0xBB, 0xFF]; // FIXME
     let request = HidMessage::broadcast(HidCommand::Init, &nonce);
     let response = hid_transact(device, &request).await?;
 
@@ -55,6 +64,6 @@ pub async fn init(device: &FidoDevice) -> Result<InitResponse, Error> {
         version_major: cursor.read_u8().unwrap(),
         version_minor: cursor.read_u8().unwrap(),
         version_build: cursor.read_u8().unwrap(),
-        capabilities: cursor.read_u8().unwrap(),
+        caps: Caps::from_bits_truncate(cursor.read_u8().unwrap()),
     })
 }

@@ -9,7 +9,7 @@ const PACKET_SIZE: usize = 64;
 const REPORT_ID: u8 = 0x00;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use init::init;
+use init::{init, Caps};
 use log::{debug, info, warn};
 
 use crate::transport::error::{Error, TransportError};
@@ -34,8 +34,12 @@ pub async fn list_devices() -> Result<Vec<FidoDevice>, Error> {
 
 pub async fn wink(device: &FidoDevice) -> Result<(), Error> {
     let init_response = init(&device).await?;
-    let cid = init_response.cid;
+    if !init_response.caps.contains(Caps::WINK) {
+        warn!("Wink is not supported by {}. Ignoring.", device);
+        return Ok(());
+    }
 
+    let cid = init_response.cid;
     hid_transact(device, &HidMessage::new(cid, HidCommand::Wink, &[])).await?;
     Ok(())
 }
@@ -53,11 +57,15 @@ async fn hid_transact(device: &FidoDevice, msg: &HidMessage) -> Result<HidMessag
         .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
     for packet in packets {
         let mut report: Vec<u8> = vec![REPORT_ID];
-        report.extend(packet);
-        debug!("Sending HID report to {:}: {:?}", device, report);
-        hidapi_device
-            .write(&report)
-            .or(Err(Error::Transport(TransportError::ConnectionLost)))?;
+        report.extend(&packet);
+        report.extend(vec![0; PACKET_SIZE - packet.len()]);
+        debug!(
+            "Sending HID report to {:} ({:} bytes): {:?}",
+            device,
+            report.len(),
+            report
+        );
+        hidapi_device.write(&report).unwrap();
     }
 
     println!("Waiting for response");
