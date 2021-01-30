@@ -1,6 +1,7 @@
 use crate::proto::ctap1::apdu::{ApduResponse, ApduResponseStatus};
 use std::convert::TryFrom;
 use std::io::{BufRead, Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Read};
+use std::time::Duration;
 
 use byteorder::{BigEndian, ReadBytesExt};
 use sha2::{Digest, Sha256};
@@ -44,7 +45,8 @@ pub struct Ctap1RegisterRequest {
     pub app_id: String,
     pub challenge: Vec<u8>,
     pub registered_keys: Vec<Ctap1RegisteredKey>,
-    pub timeout_seconds: u32,
+    pub timeout: Duration,
+    pub require_user_presence: bool,
 }
 
 impl Ctap1RegisterRequest {
@@ -52,14 +54,16 @@ impl Ctap1RegisterRequest {
         app_id: &str,
         challenge: &[u8],
         registered_keys: Vec<Ctap1RegisteredKey>,
-        timeout_seconds: u32,
+        timeout: Duration,
+        require_user_presence: bool,
     ) -> Ctap1RegisterRequest {
         Ctap1RegisterRequest {
             version: Ctap1Version::U2fV2,
             app_id: String::from(app_id),
             challenge: Vec::from(challenge),
             registered_keys,
-            timeout_seconds,
+            timeout,
+            require_user_presence,
         }
     }
 
@@ -136,7 +140,7 @@ pub struct Ctap1SignRequest {
     pub app_id: String,
     pub challenge: Vec<u8>,
     pub key_handle: Vec<u8>,
-    pub timeout_seconds: u32,
+    pub timeout: Duration,
     pub require_user_presence: bool,
 }
 
@@ -145,14 +149,14 @@ impl Ctap1SignRequest {
         app_id: &str,
         challenge: &[u8],
         key_handle: &[u8],
-        timeout_seconds: u32,
+        timeout: Duration,
         require_user_presence: bool,
     ) -> Ctap1SignRequest {
         Ctap1SignRequest {
             app_id: String::from(app_id),
             challenge: Vec::from(challenge),
             key_handle: Vec::from(key_handle),
-            timeout_seconds,
+            timeout,
             require_user_presence,
         }
     }

@@ -1,4 +1,4 @@
-use crate::proto::CtapError;
+pub use crate::proto::CtapError;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum TransportError {

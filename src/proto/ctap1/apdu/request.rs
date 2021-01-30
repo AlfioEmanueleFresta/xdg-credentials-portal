@@ -14,6 +14,10 @@ const U2F_REGISTER: u8 = 0x01;
 const U2F_AUTHENTICATE: u8 = 0x02;
 const U2F_VERSION: u8 = 0x03;
 
+const CONTROL_BYTE_CHECK_ONLY: u8 = 0x07;
+const CONTROL_BYTE_ENFORCE_UP_AND_SIGN: u8 = 0x03;
+const CONTROL_BYTE_DONT_ENFORCE_UP_AND_SIGN: u8 = 0x08;
+
 #[derive(Debug)]
 pub struct ApduRequest {
     ins: u8,
@@ -115,33 +119,39 @@ impl ApduRequest {
     }
 }
 
-impl From<Ctap1RegisterRequest> for ApduRequest {
-    fn from(request: Ctap1RegisterRequest) -> Self {
+impl From<&Ctap1RegisterRequest> for ApduRequest {
+    fn from(request: &Ctap1RegisterRequest) -> Self {
         let mut data = request.challenge.clone();
         let app_id_hash = request.app_id_hash();
         data.extend(app_id_hash);
-        Self::new(U2F_REGISTER, 0x00, 0x00, Some(&data), Some(APDU_SHORT_LE))
+        Self::new(
+            U2F_REGISTER,
+            CONTROL_BYTE_ENFORCE_UP_AND_SIGN,
+            0x00,
+            Some(&data),
+            Some(APDU_SHORT_LE),
+        )
     }
 }
 
-impl From<Ctap1VersionRequest> for ApduRequest {
-    fn from(_: Ctap1VersionRequest) -> Self {
+impl From<&Ctap1VersionRequest> for ApduRequest {
+    fn from(_: &Ctap1VersionRequest) -> Self {
         Self::new(U2F_VERSION, 0x00, 0x00, None, Some(APDU_SHORT_LE))
     }
 }
 
-impl From<Ctap1SignRequest> for ApduRequest {
-    fn from(request: Ctap1SignRequest) -> Self {
+impl From<&Ctap1SignRequest> for ApduRequest {
+    fn from(request: &Ctap1SignRequest) -> Self {
         let p1 = if request.require_user_presence {
-            0x03
+            CONTROL_BYTE_ENFORCE_UP_AND_SIGN
         } else {
-            0x08
+            CONTROL_BYTE_DONT_ENFORCE_UP_AND_SIGN
         };
         let mut data = request.challenge.clone();
         let app_id_hash = request.app_id_hash();
         data.extend(app_id_hash);
         data.write_u8(request.key_handle.len() as u8).unwrap();
-        data.extend(request.key_handle);
+        data.extend(&request.key_handle);
         Self::new(U2F_AUTHENTICATE, p1, 0x00, Some(&data), Some(APDU_SHORT_LE))
     }
 }

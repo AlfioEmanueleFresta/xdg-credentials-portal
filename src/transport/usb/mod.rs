@@ -72,7 +72,7 @@ async fn _u2f_register(request: Ctap1RegisterRequest) -> Result<Ctap1RegisterRes
     ) = channel();
     if let Err(u2f_error) = manager.register(
         flags,
-        (request.timeout_seconds * 1000).into(),
+        request.timeout.as_millis() as u64,
         request.challenge,
         app_id_hash,
         key_handles,
@@ -114,7 +114,7 @@ async fn _u2f_sign(request: Ctap1SignRequest) -> Result<Ctap1SignResponse, Error
     ) = channel();
     if let Err(u2f_error) = manager.sign(
         flags,
-        (request.timeout_seconds * 1000).into(),
+        request.timeout.as_millis() as u64,
         request.challenge,
         vec![app_id_hash],
         vec![key_handle],

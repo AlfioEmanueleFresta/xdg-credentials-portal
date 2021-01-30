@@ -37,7 +37,7 @@ pub enum CtapError {
     InvalidOption = 0x2C,        // CTAP2_ERR_INVALID_OPTION
     KeepAliveCancel = 0x2D,      // CTAP2_ERR_KEEPALIVE_CANCEL
     NoCredentials = 0x2E,        // CTAP2_ERR_NO_CREDENTIALS
-    UserActionTiemout = 0x2F,    // CTAP2_ERR_USER_ACTION_TIMEOUT
+    UserActionTimeout = 0x2F,    // CTAP2_ERR_USER_ACTION_TIMEOUT
     NotAllowed = 0x30,           // CTAP2_ERR_NOT_ALLOWED
     PINInvalid = 0x31,           // CTAP2_ERR_PIN_INVALID
     PINBlocked = 0x32,           // CTAP2_ERR_PIN_BLOCKED

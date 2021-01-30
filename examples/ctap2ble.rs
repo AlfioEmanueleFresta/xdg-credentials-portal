@@ -43,7 +43,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         extensions_cbor: vec![],
     };
 
-    webauthn_make_credential(device, make_credentials_request)
+    webauthn_make_credential(device, &make_credentials_request)
         .await
         .unwrap();
 
