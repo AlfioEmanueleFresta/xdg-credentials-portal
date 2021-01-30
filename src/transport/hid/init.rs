@@ -1,13 +1,15 @@
 extern crate bitflags;
 extern crate log;
+extern crate rand;
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use log::warn;
+use byteorder::{BigEndian, ReadBytesExt};
+use log::{debug, warn};
+use rand::{thread_rng, Rng};
 
 use std::io::{Cursor as IOCursor, Seek, SeekFrom};
 
 use super::device::FidoDevice;
-use super::framing::{HidCommand, HidMessage, HidMessageParser, HidMessageParserState};
+use super::framing::{HidCommand, HidMessage};
 use super::hid_transact;
 use crate::transport::error::{Error, TransportError};
 
@@ -33,7 +35,7 @@ pub struct InitResponse {
 }
 
 pub async fn init(device: &FidoDevice) -> Result<InitResponse, Error> {
-    let nonce = vec![0x42, 0x41, 0x62, 0xA3, 0x04, 0x04, 0xBB, 0xFF]; // FIXME
+    let nonce: [u8; 8] = thread_rng().gen();
     let request = HidMessage::broadcast(HidCommand::Init, &nonce);
     let response = hid_transact(device, &request).await?;
 
@@ -58,12 +60,14 @@ pub async fn init(device: &FidoDevice) -> Result<InitResponse, Error> {
     let mut cursor = IOCursor::new(response.payload);
     cursor.seek(SeekFrom::Start(8)).unwrap();
 
-    Ok(InitResponse {
+    let init = InitResponse {
         cid: cursor.read_u32::<BigEndian>().unwrap(),
         protocol_version: cursor.read_u8().unwrap(),
         version_major: cursor.read_u8().unwrap(),
         version_minor: cursor.read_u8().unwrap(),
         version_build: cursor.read_u8().unwrap(),
         caps: Caps::from_bits_truncate(cursor.read_u8().unwrap()),
-    })
+    };
+    debug!("Device {:} INIT response: {:?}", device, &init);
+    Ok(init)
 }

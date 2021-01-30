@@ -8,7 +8,6 @@ pub mod init;
 const PACKET_SIZE: usize = 64;
 const REPORT_ID: u8 = 0x00;
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use init::{init, Caps};
 use log::{debug, info, warn};
 

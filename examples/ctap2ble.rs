@@ -3,7 +3,7 @@ use backend::proto::ctap2::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialRpEntity,
     Ctap2PublicKeyCredentialType, Ctap2PublicKeyCredentialUserEntity,
 };
-use backend::transport::ble::{list_devices, webauthn_get_assertion, webauthn_make_credential};
+use backend::transport::ble::{list_devices, webauthn_make_credential};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {

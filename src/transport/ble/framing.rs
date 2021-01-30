@@ -7,7 +7,6 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::convert::TryInto;
 use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
-const MAX_FRAGMENT_LENGTH: usize = 0xFF_FF;
 const INITIAL_FRAGMENT_HEADER_LENGTH: usize = 3; // 1B op, 2B length
 const INITIAL_FRAGMENT_MIN_LENGTH: usize = INITIAL_FRAGMENT_HEADER_LENGTH;
 const CONT_FRAGMENT_HEADER_LENGTH: usize = 1;
