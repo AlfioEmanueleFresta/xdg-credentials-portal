@@ -14,6 +14,7 @@ use tokio::time::{sleep, timeout as tokio_timeout};
 use crate::proto::ctap1::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
+use crate::proto::ctap1::{Ctap1VersionRequest, Ctap1VersionResponse};
 
 use crate::transport::error::{CtapError, Error, TransportError};
 
@@ -158,6 +159,16 @@ pub async fn wink(device: &FidoDevice) -> Result<(), Error> {
     let cid = handshake(device, Some(Caps::WINK), false).await?.cid;
     hid_transact(device, &HidMessage::new(cid, HidCommand::Wink, &[])).await?;
     Ok(())
+}
+
+pub async fn ctap1_version(device: &FidoDevice) -> Result<Ctap1VersionResponse, Error> {
+    let cid = handshake(device, None, true).await?.cid;
+    let request = &Ctap1VersionRequest::new();
+    let apdu_request: ApduRequest = request.into();
+    let apdu_response = send_apdu_request(device, cid, &apdu_request).await?;
+    let response: Ctap1VersionResponse = apdu_response.try_into().or(Err(CtapError::Other))?;
+    info!("Version response: {:?}", response);
+    Ok(response)
 }
 
 pub async fn ctap1_register(

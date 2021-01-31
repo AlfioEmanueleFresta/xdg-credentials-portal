@@ -178,6 +178,46 @@ impl Ctap1VersionRequest {
 }
 
 #[derive(Debug)]
+pub struct Ctap1VersionResponse {
+    pub version: Ctap1Version,
+}
+
+impl TryFrom<ApduResponse> for Ctap1VersionResponse {
+    type Error = IOError;
+
+    fn try_from(apdu: ApduResponse) -> Result<Self, Self::Error> {
+        if apdu.status()? != ApduResponseStatus::NoError {
+            return Err(IOError::new(
+                IOErrorKind::InvalidInput,
+                "APDU packets need to have status NoError to be converted..",
+            ));
+        }
+
+        let data = apdu.data.ok_or(IOError::new(
+            IOErrorKind::InvalidInput,
+            "Emtpy APDU packet.",
+        ))?;
+
+        let version_string = String::from_utf8(data).or(Err(IOError::new(
+            IOErrorKind::InvalidInput,
+            "Invalid UTF-8 bytes in CTAP1 version string",
+        )))?;
+
+        let version = match version_string.as_str() {
+            "U2F_V2" => Ctap1Version::U2fV2,
+            _ => {
+                return Err(IOError::new(
+                    IOErrorKind::InvalidInput,
+                    format!("Invalid CTAP1 version string: {:}", version_string),
+                ))
+            }
+        };
+
+        Ok(Ctap1VersionResponse { version })
+    }
+}
+
+#[derive(Debug)]
 pub struct Ctap1SignResponse {
     pub user_presence_verified: bool,
     pub signature: Vec<u8>,
