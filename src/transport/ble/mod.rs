@@ -14,6 +14,7 @@ use crate::ops::webauthn::{GetAssertionResponse, MakeCredentialResponse};
 use crate::ops::u2f::{RegisterRequest, SignRequest};
 use crate::ops::u2f::{RegisterResponse, SignResponse};
 
+use crate::proto::ctap2::Ctap2DowngradeCheck;
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest};
 use crate::proto::ctap2::{Ctap2GetAssertionResponse, Ctap2MakeCredentialResponse};
 use crate::proto::CtapError;
@@ -21,6 +22,8 @@ use crate::proto::CtapError;
 use crate::proto::ctap1::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
+
+use crate::fido::{FidoProtocol, FidoRevision};
 
 use log::{debug, info, warn};
 use std::convert::TryInto;
@@ -30,28 +33,6 @@ use crate::transport::error::{Error, TransportError};
 use framing::BleCommand;
 
 use framing::BleFrame;
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-#[repr(u8)]
-pub enum FidoRevision {
-    V2 = 0x20,
-    U2fv12 = 0x40,
-    U2fv11 = 0x80,
-}
-
-enum FidoProtocol {
-    FIDO2,
-    U2F,
-}
-
-impl From<FidoRevision> for FidoProtocol {
-    fn from(revision: FidoRevision) -> Self {
-        match revision {
-            FidoRevision::V2 => FidoProtocol::FIDO2,
-            FidoRevision::U2fv11 | FidoRevision::U2fv12 => FidoProtocol::U2F,
-        }
-    }
-}
 
 pub async fn list_devices() -> Result<Vec<FidoDevice>, Error> {
     let devices = bluez::list_devices()
@@ -94,8 +75,7 @@ pub async fn webauthn_make_credential(
     device: &FidoDevice,
     op: &MakeCredentialRequest,
 ) -> Result<MakeCredentialResponse, Error> {
-    let downgradable = true; // FIXME check!
-    let (protocol, revision) = negotiate_protocol(device, true, downgradable)
+    let (protocol, revision) = negotiate_protocol(device, true, op.is_downgradable())
         .await?
         .ok_or(Transport(TransportError::NegotiationFailed))?;
 
@@ -116,8 +96,7 @@ pub async fn webauthn_get_assertion(
     device: &FidoDevice,
     op: &GetAssertionRequest,
 ) -> Result<GetAssertionResponse, Error> {
-    let downgradable = true; // FIXME check!
-    let (protocol, revision) = negotiate_protocol(device, true, downgradable)
+    let (protocol, revision) = negotiate_protocol(device, true, op.is_downgradable())
         .await?
         .ok_or(Transport(TransportError::NegotiationFailed))?;
 
@@ -138,8 +117,7 @@ pub async fn u2f_register(
     device: &FidoDevice,
     op: &RegisterRequest,
 ) -> Result<RegisterResponse, Error> {
-    let downgradable = true; // FIXME check!
-    let (protocol, revision) = negotiate_protocol(device, true, downgradable)
+    let (protocol, revision) = negotiate_protocol(device, false, true)
         .await?
         .ok_or(Transport(TransportError::NegotiationFailed))?;
 
@@ -150,8 +128,7 @@ pub async fn u2f_register(
 }
 
 pub async fn u2f_sign(device: &FidoDevice, op: &SignRequest) -> Result<SignResponse, Error> {
-    let downgradable = true; // FIXME check!
-    let (protocol, revision) = negotiate_protocol(device, true, downgradable)
+    let (protocol, revision) = negotiate_protocol(device, false, true)
         .await?
         .ok_or(Transport(TransportError::NegotiationFailed))?;
 

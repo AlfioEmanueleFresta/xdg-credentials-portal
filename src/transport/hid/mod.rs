@@ -15,7 +15,16 @@ use crate::proto::ctap1::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
 use crate::proto::ctap1::{Ctap1VersionRequest, Ctap1VersionResponse};
+use crate::proto::ctap2::Ctap2DowngradeCheck;
+use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2GetAssertionResponse};
+use crate::proto::ctap2::{Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse};
 
+use crate::ops::u2f::{RegisterRequest, SignRequest};
+use crate::ops::u2f::{RegisterResponse, SignResponse};
+use crate::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
+use crate::ops::webauthn::{GetAssertionResponse, MakeCredentialResponse};
+
+use crate::fido::FidoProtocol;
 use crate::transport::error::{CtapError, Error, TransportError};
 
 use device::FidoDevice;
@@ -131,52 +140,21 @@ async fn send_apdu_request_wait_uv(
     .or(Err(Error::Ctap(CtapError::UserActionTimeout)))?
 }
 
-async fn handshake(
-    device: &FidoDevice,
-    required_caps: Option<Caps>,
-    is_apdu: bool,
-) -> Result<InitResponse, Error> {
-    let init_response = init(&device).await?;
-    if let Some(required_caps) = required_caps {
-        if !init_response.caps.contains(required_caps) {
-            warn!(
-                "Capabilities {:?} are not supported by device {}.",
-                required_caps, device
-            );
-            return Err(Error::Ctap(CtapError::InvalidCommand));
-        }
-    }
-
-    if is_apdu && init_response.caps.contains(Caps::NO_MSG) {
-        warn!("Device {} does not support APDU (MSG command).", device);
-        return Err(Error::Ctap(CtapError::InvalidCommand));
-    }
-
-    Ok(init_response)
-}
-
-pub async fn wink(device: &FidoDevice) -> Result<(), Error> {
-    let cid = handshake(device, Some(Caps::WINK), false).await?.cid;
-    hid_transact(device, &HidMessage::new(cid, HidCommand::Wink, &[])).await?;
-    Ok(())
-}
-
-pub async fn ctap1_version(device: &FidoDevice) -> Result<Ctap1VersionResponse, Error> {
-    let cid = handshake(device, None, true).await?.cid;
+async fn ctap1_version(device: &FidoDevice, cid: u32) -> Result<Ctap1VersionResponse, Error> {
     let request = &Ctap1VersionRequest::new();
     let apdu_request: ApduRequest = request.into();
     let apdu_response = send_apdu_request(device, cid, &apdu_request).await?;
     let response: Ctap1VersionResponse = apdu_response.try_into().or(Err(CtapError::Other))?;
-    info!("Version response: {:?}", response);
+    debug!("CTAP1 version response: {:?}", response);
     Ok(response)
 }
 
-pub async fn ctap1_register(
+async fn ctap1_register(
     device: &FidoDevice,
+    cid: u32,
     request: &Ctap1RegisterRequest,
 ) -> Result<Ctap1RegisterResponse, Error> {
-    let cid = handshake(device, None, true).await?.cid;
-
+    debug!("CTAP1 register request: {:?}", request);
     // TODO iterate over exclude list
 
     let apdu_request: ApduRequest = request.into();
@@ -188,17 +166,16 @@ pub async fn ctap1_register(
     }
 
     let response: Ctap1RegisterResponse = apdu_response.try_into().unwrap();
-    info!("Register response: {:?}", response);
-
+    debug!("CTAP1 register response: {:?}", response);
     Ok(response)
 }
 
-pub async fn ctap1_sign(
+async fn ctap1_sign(
     device: &FidoDevice,
+    cid: u32,
     request: &Ctap1SignRequest,
 ) -> Result<Ctap1SignResponse, Error> {
-    let cid = handshake(device, None, true).await?.cid;
-
+    debug!("CTAP1 sign request: {:?}", request);
     // TODO iterate over exclude list
 
     let apdu_request: ApduRequest = request.into();
@@ -210,7 +187,147 @@ pub async fn ctap1_sign(
     }
 
     let response: Ctap1SignResponse = apdu_response.try_into().unwrap();
-    info!("Sign response: {:?}", response);
-
+    debug!("CTAP1 sign response: {:?}", response);
     Ok(response)
+}
+
+async fn ctap2_make_credential(
+    _: &FidoDevice,
+    cid: u32,
+    request: &Ctap2MakeCredentialRequest,
+) -> Result<Ctap2MakeCredentialResponse, Error> {
+    unimplemented!("")
+}
+
+async fn ctap2_get_assertion(
+    _: &FidoDevice,
+    cid: u32,
+    request: &Ctap2GetAssertionRequest,
+) -> Result<Ctap2GetAssertionResponse, Error> {
+    unimplemented!("")
+}
+
+async fn negotiate_protocol(
+    device: &FidoDevice,
+    allow_fido2: bool,
+    allow_u2f: bool,
+) -> Result<(InitResponse, FidoProtocol), Error> {
+    let init_response = init(&device).await?;
+    debug!(
+        "Negotiating protocol, allowed: FIDO2={}, U2F={}. INIT response: {:?}",
+        allow_fido2, allow_u2f, init_response
+    );
+
+    if !allow_fido2 && !allow_u2f {
+        panic!("At least one of FIDO2, and U2F must be allowed.");
+    }
+
+    let cbor_supported = init_response.caps.contains(Caps::CBOR);
+    let apdu_supported = !init_response.caps.contains(Caps::NO_MSG);
+
+    if !cbor_supported && !apdu_supported {
+        warn!(
+            "Device {} does not support either CBOR nor APDU (MSG).",
+            device
+        );
+        return Err(Error::Transport(TransportError::NegotiationFailed));
+    }
+
+    if !allow_u2f && !cbor_supported {
+        warn!(
+            "Device {} does not support CBOR capability, required for FIDO2.",
+            device
+        );
+        return Err(Error::Transport(TransportError::NegotiationFailed));
+    }
+
+    if !allow_fido2 && init_response.caps.contains(Caps::NO_MSG) {
+        warn!(
+            "Device {} does not support APDU (MSG), required for U2F.",
+            device
+        );
+        return Err(Error::Transport(TransportError::NegotiationFailed));
+    }
+
+    let fido_protocol = if allow_fido2 && cbor_supported {
+        FidoProtocol::FIDO2
+    } else {
+        // Ensure CTAP1 version is reported correctly.
+        ctap1_version(device, init_response.cid).await?;
+        FidoProtocol::U2F
+    };
+
+    if allow_fido2 && fido_protocol == FidoProtocol::U2F {
+        warn!("Negotiated protocol downgrade from FIDO2 to FIDO U2F");
+    } else {
+        info!("Selected protocol: {:?}", fido_protocol);
+    }
+    Ok((init_response, fido_protocol))
+}
+
+pub async fn wink(device: &FidoDevice) -> Result<bool, Error> {
+    let (init, _) = negotiate_protocol(device, false, true).await?;
+    if !init.caps.contains(Caps::WINK) {
+        warn!("WINK capability is not supported by device: {}", device);
+        return Ok(false);
+    }
+    hid_transact(device, &HidMessage::new(init.cid, HidCommand::Wink, &[])).await?;
+    Ok(true)
+}
+
+pub async fn webauthn_make_credential(
+    device: &FidoDevice,
+    op: &MakeCredentialRequest,
+) -> Result<MakeCredentialResponse, Error> {
+    debug!("WebAuthn MakeCredential request: {:?}", op);
+    let (init, protocol) = negotiate_protocol(device, true, op.is_downgradable()).await?;
+    match protocol {
+        FidoProtocol::FIDO2 => ctap2_make_credential(device, init.cid, op).await,
+        FidoProtocol::U2F => {
+            let register_request: RegisterRequest =
+                op.try_into().or(Err(TransportError::NegotiationFailed))?;
+            ctap1_register(device, init.cid, &register_request)
+                .await?
+                .try_into()
+                .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
+        }
+    }
+}
+
+pub async fn webauthn_get_assertion(
+    device: &FidoDevice,
+    op: &GetAssertionRequest,
+) -> Result<GetAssertionResponse, Error> {
+    let (init, protocol) = negotiate_protocol(device, true, op.is_downgradable()).await?;
+    match protocol {
+        FidoProtocol::FIDO2 => ctap2_get_assertion(device, init.cid, op).await,
+        FidoProtocol::U2F => {
+            let sign_request: SignRequest =
+                op.try_into().or(Err(TransportError::NegotiationFailed))?;
+            ctap1_sign(device, init.cid, &sign_request)
+                .await?
+                .try_into()
+                .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
+        }
+    }
+}
+
+pub async fn u2f_register(
+    device: &FidoDevice,
+    op: &RegisterRequest,
+) -> Result<RegisterResponse, Error> {
+    let (init, protocol) = negotiate_protocol(device, false, true).await?;
+    match protocol {
+        FidoProtocol::U2F => ctap1_register(device, init.cid, op).await,
+        _ => Err(Error::Transport(TransportError::NegotiationFailed)),
+    }
+}
+
+pub async fn u2f_sign(device: &FidoDevice, op: &SignRequest) -> Result<SignResponse, Error> {
+    let (init, protocol) = negotiate_protocol(device, false, true).await?;
+
+    match protocol {
+        FidoProtocol::U2F => ctap1_sign(device, init.cid, op).await,
+        _ => Err(Error::Transport(TransportError::NegotiationFailed)),
+    }
 }

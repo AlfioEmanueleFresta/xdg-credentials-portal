@@ -4,6 +4,7 @@ extern crate serde_cbor;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use serde_cbor::ser::to_vec;
 use serde_cbor::Result as CBORResult;
+use std::time::Duration;
 
 #[derive(Debug)]
 pub struct Ctap2PublicKeyCredentialRpEntity {
@@ -115,6 +116,7 @@ pub struct Ctap2MakeCredentialRequest {
     pub algorithms: Vec<Ctap2CredentialType>,
     pub exclude: Option<Vec<Ctap2PublicKeyCredentialDescriptor>>,
     pub extensions_cbor: Vec<u8>,
+    pub timeout: Duration,
 }
 
 impl Serialize for Ctap2MakeCredentialRequest {
@@ -143,6 +145,7 @@ pub struct Ctap2GetAssertionRequest {
     pub require_user_presence: bool,
     pub require_user_verification: bool,
     pub extensions_cbor: Vec<u8>,
+    pub timeout: Duration,
 }
 
 impl Serialize for Ctap2GetAssertionRequest {

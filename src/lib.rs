@@ -1,3 +1,4 @@
+pub mod fido;
 pub mod ops;
 pub mod proto;
 pub mod transport;
