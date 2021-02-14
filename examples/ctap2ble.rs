@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use backend::ops::webauthn::MakeCredentialRequest;
 use backend::proto::ctap2::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialRpEntity,
@@ -9,7 +11,6 @@ use backend::transport::ble::{list_devices, webauthn_make_credential};
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     //const APP_ID: &str = "https://foo.example.org";
-    //const TIMEOUT: u32 = 5; // Seconds
     let challenge: &[u8] =
         &base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
 
@@ -41,6 +42,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }],
         exclude: None,
         extensions_cbor: vec![],
+        timeout: Duration::from_secs(30)
     };
 
     webauthn_make_credential(device, &make_credentials_request)

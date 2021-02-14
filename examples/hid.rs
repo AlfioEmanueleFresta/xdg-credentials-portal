@@ -3,7 +3,7 @@ extern crate log;
 extern crate tokio;
 
 use backend::ops::u2f::{RegisterRequest, SignRequest};
-use backend::transport::hid::{ctap1_register, ctap1_sign, list_devices, wink};
+use backend::transport::hid::{u2f_register, u2f_sign, list_devices, wink};
 use log::info;
 use std::time::Duration;
 
@@ -26,7 +26,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Registration request sent (timeout: {:?}).", TIMEOUT);
         let register_request =
             RegisterRequest::new_u2f_v2(&APP_ID, &challenge, vec![], TIMEOUT, false);
-        let response = ctap1_register(&device, &register_request).await?;
+        let response = u2f_register(&device, &register_request).await?;
         info!("Response: {:?}", response);
 
         // Signature ceremony
@@ -34,7 +34,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let new_key = response.as_registered_key()?;
         let sign_request =
             SignRequest::new(&APP_ID, &challenge, &new_key.key_handle, TIMEOUT, true);
-        let response = ctap1_sign(&device, &sign_request).await?;
+        let response = u2f_sign(&device, &sign_request).await?;
         info!("Response: {:?}", response);
     }
 

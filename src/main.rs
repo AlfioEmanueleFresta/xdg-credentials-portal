@@ -10,6 +10,7 @@ use dbus::blocking::Connection;
 use ui::{NotificationPortalUI, UI};
 
 use log::{info, warn};
+use std::time::Duration;
 
 // TODO: portal API (d-bus session service)
 
@@ -26,22 +27,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = NotificationPortalUI::new(&mut session_bus);
 
     const APP_ID: &str = "https://foo.example.org";
-    const TIMEOUT: u32 = 30; // Seconds
+    const TIMEOUT: Duration = Duration::from_secs(30);
     let challenge: &[u8] =
         &base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
 
     // Registration ceremony
-    println!("Registration request sent (timeout: {} seconds).", TIMEOUT);
+    println!("Registration request sent (timeout: {:?}).", TIMEOUT);
     let dialog = ui.confirm_u2f_usb_register(APP_ID, TIMEOUT, |_| {
         warn!("User cancelled the request.");
     })?;
-    let register_request = RegisterRequest::new_u2f_v2(&APP_ID, &challenge, vec![], TIMEOUT);
+    let register_request = RegisterRequest::new_u2f_v2(&APP_ID, &challenge, vec![], TIMEOUT, true);
     let response = u2f_register(register_request).await?;
     ui.cancel(dialog)?;
     println!("Response: {:?}", response);
 
     // Signature ceremony
-    println!("Signature request sent (timeout: {} seconds).", TIMEOUT);
+    println!("Signature request sent (timeout: {:?}).", TIMEOUT);
     let new_key = response.as_registered_key()?;
     let sign_request = SignRequest::new(&APP_ID, &challenge, &new_key.key_handle, TIMEOUT, true);
     let dialog = ui.confirm_u2f_usb_sign(APP_ID, TIMEOUT, |_| {

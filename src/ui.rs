@@ -63,14 +63,14 @@ pub trait UI {
     fn confirm_u2f_usb_register(
         &self,
         app_id: &str,
-        timeout_seconds: u32,
+        timeout: Duration,
         callback: fn(CancellationResponse) -> (),
     ) -> Result<Self::Handle, Box<dyn Error>>;
 
     fn confirm_u2f_usb_sign(
         &self,
         app_id: &str,
-        timeout_seconds: u32,
+        timeout: Duration,
         callback: fn(CancellationResponse) -> (),
     ) -> Result<Self::Handle, Box<dyn Error>>;
 
@@ -151,15 +151,15 @@ impl<'conn> UI for NotificationPortalUI<'conn> {
     fn confirm_u2f_usb_register(
         &self,
         app_id: &str,
-        timeout_seconds: u32,
+        timeout: Duration,
         callback: fn(CancellationResponse) -> (),
     ) -> Result<Self::Handle, Box<dyn Error>> {
         self._action(
             "Touch your Security Key to register it",
             &format!(
                 "\nThe application (<b>{}</b>) would like to register your FIDO U2F security key.\n\n\
-                 Touch it within {} seconds, or click Cancel.",
-                app_id, timeout_seconds
+                 Touch it within {:?}, or click Cancel.",
+                app_id, timeout
             ),
             callback,
         )
@@ -168,7 +168,7 @@ impl<'conn> UI for NotificationPortalUI<'conn> {
     fn confirm_u2f_usb_sign(
         &self,
         app_id: &str,
-        timeout_seconds: u32,
+        timeout: Duration,
         callback: fn(CancellationResponse) -> (),
     ) -> Result<Self::Handle, Box<dyn Error>> {
         self._action(
@@ -176,8 +176,8 @@ impl<'conn> UI for NotificationPortalUI<'conn> {
             &format!(
                 "\nThe application (<b>{}</b>) would like to verify your\
                  identity using your FIDO U2F security key.\n\n\
-                 Touch it within {} seconds, or click Cancel.",
-                app_id, timeout_seconds
+                 Touch it within {:?}, or click Cancel.",
+                app_id, timeout
             ),
             callback,
         )
