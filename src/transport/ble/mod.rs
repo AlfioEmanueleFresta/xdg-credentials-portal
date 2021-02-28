@@ -75,15 +75,17 @@ pub async fn webauthn_make_credential(
     device: &FidoDevice,
     op: &MakeCredentialRequest,
 ) -> Result<MakeCredentialResponse, Error> {
-    let (protocol, revision) = negotiate_protocol(device, true, op.is_downgradable())
+    let ctap2_request: &Ctap2MakeCredentialRequest = &op.into();
+    let (protocol, revision) = negotiate_protocol(device, true, ctap2_request.is_downgradable())
         .await?
         .ok_or(Transport(TransportError::NegotiationFailed))?;
 
     match protocol {
-        FidoProtocol::FIDO2 => ctap2_make_credential(device, op).await,
+        FidoProtocol::FIDO2 => ctap2_make_credential(device, ctap2_request).await,
         FidoProtocol::U2F => {
-            let register_request: RegisterRequest =
-                op.try_into().or(Err(TransportError::NegotiationFailed))?;
+            let register_request: RegisterRequest = ctap2_request
+                .try_into()
+                .or(Err(TransportError::NegotiationFailed))?;
             ctap1_register(device, &revision, &register_request)
                 .await?
                 .try_into()

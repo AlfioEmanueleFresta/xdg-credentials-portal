@@ -1,5 +1,7 @@
 extern crate async_trait;
 
+pub mod cbor;
+
 mod downgrade;
 mod protocol;
 

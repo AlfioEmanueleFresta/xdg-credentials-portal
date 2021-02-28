@@ -42,7 +42,6 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }],
         exclude: None,
         extensions_cbor: vec![],
-        timeout: Duration::from_secs(30)
     };
 
     webauthn_make_credential(device, &make_credentials_request)

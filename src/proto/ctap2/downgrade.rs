@@ -1,4 +1,7 @@
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    time::Duration,
+};
 
 use crate::proto::error::CtapError;
 
@@ -50,7 +53,7 @@ impl TryFrom<&Ctap2MakeCredentialRequest> for Ctap1RegisterRequest {
         Ok(Ctap1RegisterRequest {
             version: Ctap1Version::U2fV2,
             app_id: ctap2.relying_party.id.clone(),
-            challenge: ctap2.hash.clone(),
+            challenge: ctap2.hash.to_vec(),
             registered_keys: ctap2
                 .exclude
                 .as_ref()
@@ -58,7 +61,7 @@ impl TryFrom<&Ctap2MakeCredentialRequest> for Ctap1RegisterRequest {
                 .into_iter()
                 .map(|exclude| Ctap1RegisteredKey {
                     version: Ctap1Version::U2fV2,
-                    key_handle: exclude.id.clone(),
+                    key_handle: exclude.id.to_vec(),
                     transports: {
                         match &exclude.transports {
                             None => None,
@@ -72,8 +75,9 @@ impl TryFrom<&Ctap2MakeCredentialRequest> for Ctap1RegisterRequest {
                     app_id: Some(ctap2.relying_party.id.clone()),
                 })
                 .collect(),
-            require_user_presence: ctap2.require_user_presence,
-            timeout: ctap2.timeout,
+            require_user_presence: ctap2.options.is_some()
+                && ctap2.options.unwrap().up.unwrap_or(false),
+            timeout: Duration::from_secs(2),
         })
     }
 }

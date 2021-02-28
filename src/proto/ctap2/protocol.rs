@@ -1,29 +1,71 @@
+extern crate num_enum;
 extern crate serde;
 extern crate serde_cbor;
+extern crate serde_indexed;
+extern crate serde_repr;
 
-use serde::ser::{Serialize, SerializeMap, Serializer};
-use serde_cbor::ser::to_vec;
-use serde_cbor::Result as CBORResult;
+use base64_url::base64::display;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use serde_bytes::ByteBuf;
+use serde_derive::{Deserialize, Serialize};
+use serde_indexed::{DeserializeIndexed, SerializeIndexed};
+use serde_repr::{Deserialize_repr, Serialize_repr};
+
+use crate::ops::webauthn::MakeCredentialRequest;
+
 use std::time::Duration;
 
-#[derive(Debug)]
-pub struct Ctap2PublicKeyCredentialRpEntity {
-    pub id: String,
+#[derive(Debug, IntoPrimitive, TryFromPrimitive, Copy, Clone, PartialEq, Serialize_repr)]
+#[repr(u8)]
+pub enum Ctap2CommandCode {
+    AuthenticatorMakeCredential = 0x01,
+    AuthenticatorGetAssertion = 0x02,
+    AuthenticatorGetInfo = 0x04,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Ctap2PublicKeyCredentialRpEntity {
+    pub id: String,
+    pub name: String,
+}
+
+impl Ctap2PublicKeyCredentialRpEntity {
+    pub fn new(id: &str, name: &str) -> Self {
+        Self {
+            id: String::from(id),
+            name: String::from(name),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ctap2PublicKeyCredentialUserEntity {
-    pub id: Vec<u8>,
+    pub id: ByteBuf,
+    pub name: String,
+
     // TODO(afresta): Validation as per https://www.w3.org/TR/webauthn/#sctn-user-credential-params
+    #[serde(rename = "displayName")]
     pub display_name: String,
 }
 
-#[derive(Debug)]
+impl Ctap2PublicKeyCredentialUserEntity {
+    pub fn new(id: &[u8], name: &str, display_name: &str) -> Self {
+        Self {
+            id: ByteBuf::from(id),
+            name: String::from(name),
+            display_name: String::from(display_name),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Ctap2PublicKeyCredentialType {
+    #[serde(rename = "public-key")]
     PublicKey,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Ctap2Transport {
     BLE,
     NFC,
@@ -31,66 +73,40 @@ pub enum Ctap2Transport {
     INTERNAL,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ctap2PublicKeyCredentialDescriptor {
     pub r#type: Ctap2PublicKeyCredentialType,
-    pub id: Vec<u8>,
+    pub id: ByteBuf,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transports: Option<Vec<Ctap2Transport>>,
 }
 
 #[repr(i32)]
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Serialize_repr, Deserialize_repr)]
 pub enum Ctap2COSEAlgorithmIdentifier {
     ES256 = -7,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Ctap2CredentialType {
+    #[serde(rename = "type")]
     pub public_key_type: Ctap2PublicKeyCredentialType,
+
+    #[serde(rename = "alg")]
     pub algorithm: Ctap2COSEAlgorithmIdentifier,
 }
 
-#[derive(Debug)]
-pub enum Ctap2Operation {
-    MakeCredential(Ctap2MakeCredentialRequest),
-    GetAssertion(Ctap2GetAssertionRequest),
-    // GetNextAssertion(Ctap2GetNextAssertinRequest),
-    GetInfo,
-    // ClientPin(Ctap2ClientPinRequest),
-    Reset,
-}
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Ctap2MakeCredentialOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rk: Option<bool>,
 
-impl Ctap2Operation {
-    pub fn command_value(&self) -> u8 {
-        match self {
-            Ctap2Operation::MakeCredential(_) => 0x01,
-            Ctap2Operation::GetAssertion(_) => 0x02,
-            // Ctap2Operation::GetNextAssertion => 0x08,
-            Ctap2Operation::GetInfo => 0x04,
-            // Ctap2Operation::ClientPin(_) => 0x06,
-            Ctap2Operation::Reset => 0x07,
-        }
-    }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub up: Option<bool>,
 
-    // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#commands
-    pub fn serialize(&self) -> CBORResult<Vec<u8>> {
-        let mut command = vec![self.command_value()];
-        match self {
-            Ctap2Operation::MakeCredential(request) => {
-                let mut payload = to_vec(request)?;
-                command.append(&mut payload);
-            }
-            Ctap2Operation::GetAssertion(request) => {
-                let mut payload = to_vec(request)?;
-                command.append(&mut payload);
-            }
-            // Ctap2Operation::GetNextAssertion(_) => 0x08,
-            Ctap2Operation::GetInfo => {}
-            // Ctap2Operation::ClientPin(_) => 0x06,
-            Ctap2Operation::Reset => {}
-        };
-        Ok(command)
-    }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uv: Option<bool>,
 }
 
 pub type Ctap2AttestationStatement = Option<Ctap2AttestationStatementSome>;
@@ -104,29 +120,80 @@ pub enum Ctap2AttestationStatementSome {
 }
 
 // https://www.w3.org/TR/webauthn/#authenticatormakecredential
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, SerializeIndexed, DeserializeIndexed)]
+#[serde_indexed(offset = 1)]
 pub struct Ctap2MakeCredentialRequest {
-    pub origin: String,
-    pub hash: Vec<u8>,
+    /// clientDataHash (0x01)
+    pub hash: ByteBuf,
+
+    /// rp (0x02)
     pub relying_party: Ctap2PublicKeyCredentialRpEntity,
+
+    /// user (0x03)
     pub user: Ctap2PublicKeyCredentialUserEntity,
-    pub require_resident_key: bool,
-    pub require_user_presence: bool,
-    pub require_user_verification: bool,
+
+    /// pubKeyCredParams (0x04)
     pub algorithms: Vec<Ctap2CredentialType>,
+
+    /// excludeList (0x05)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub exclude: Option<Vec<Ctap2PublicKeyCredentialDescriptor>>,
-    pub extensions_cbor: Vec<u8>,
-    pub timeout: Duration,
+
+    /// extensions (0x06)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions_cbor: Option<Vec<u8>>,
+
+    /// options (0x07)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<Ctap2MakeCredentialOptions>,
+
+    /// pinUvAuthParam (0x08)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pin_auth_param: Option<Vec<u8>>,
+
+    /// pinUvAuthProtocol (0x09)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pin_auth_proto: Option<u32>,
+
+    /// enterpriseAttestation (0x0A)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_attestation: Option<u32>,
 }
 
-impl Serialize for Ctap2MakeCredentialRequest {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let map = serializer.serialize_map(None)?;
-        // TODO
-        map.end()
+impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
+    fn from(op: &MakeCredentialRequest) -> Ctap2MakeCredentialRequest {
+        Ctap2MakeCredentialRequest {
+            hash: ByteBuf::from(op.hash.clone()),
+            relying_party: op.relying_party.clone(),
+            user: op.user.clone(),
+            algorithms: op.algorithms.clone(),
+            exclude: op.exclude.clone(),
+            extensions_cbor: if op.extensions_cbor.is_empty() {
+                None
+            } else {
+                Some(op.extensions_cbor.clone())
+            },
+            options: Some(Ctap2MakeCredentialOptions {
+                rk: if op.require_resident_key {
+                    Some(true)
+                } else {
+                    None
+                },
+                up: if op.require_user_presence {
+                    Some(true)
+                } else {
+                    None
+                },
+                uv: if op.require_user_verification {
+                    Some(true)
+                } else {
+                    None
+                },
+            }),
+            pin_auth_param: None,
+            pin_auth_proto: None,
+            enterprise_attestation: None,
+        }
     }
 }
 
@@ -146,17 +213,6 @@ pub struct Ctap2GetAssertionRequest {
     pub require_user_verification: bool,
     pub extensions_cbor: Vec<u8>,
     pub timeout: Duration,
-}
-
-impl Serialize for Ctap2GetAssertionRequest {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let map = serializer.serialize_map(None)?;
-        // TODO
-        map.end()
-    }
 }
 
 #[derive(Debug)]

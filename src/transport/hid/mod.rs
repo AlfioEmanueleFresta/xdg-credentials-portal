@@ -1,5 +1,7 @@
 extern crate hidapi;
 extern crate log;
+extern crate serde;
+extern crate serde_cbor;
 
 pub mod device;
 pub mod framing;
@@ -15,6 +17,7 @@ use crate::proto::ctap1::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
 use crate::proto::ctap1::{Ctap1VersionRequest, Ctap1VersionResponse};
+use crate::proto::ctap2::cbor::{CborRequest, CborResponse};
 use crate::proto::ctap2::Ctap2DowngradeCheck;
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2GetAssertionResponse};
 use crate::proto::ctap2::{Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse};
@@ -30,6 +33,8 @@ use crate::transport::error::{CtapError, Error, TransportError};
 use device::FidoDevice;
 use framing::{HidCommand, HidMessage, HidMessageParser, HidMessageParserState};
 use hidapi::HidApi;
+
+use serde_cbor::{from_slice, ser::to_vec_packed, to_vec};
 
 const UP_SLEEP: Duration = Duration::from_millis(150);
 const PACKET_SIZE: usize = 64;
@@ -93,6 +98,27 @@ async fn hid_transact(device: &FidoDevice, msg: &HidMessage) -> Result<HidMessag
         .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
     debug!("U2F HID response from {:}: {:?}", device, response);
     Ok(response)
+}
+
+async fn send_cbor_request(
+    device: &FidoDevice,
+    cid: u32,
+    request: &CborRequest,
+) -> Result<CborResponse, Error> {
+    debug!(
+        "Sending CBOR request to {} (cid: {}): {:?}",
+        device, cid, request
+    );
+    let hid_response = hid_transact(
+        device,
+        &HidMessage::new(cid, HidCommand::Cbor, &request.ctap_hid_data()),
+    )
+    .await?;
+    let cbor_response = CborResponse::try_from(&hid_response.payload)
+        .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
+
+    debug!("Received CBOR response: {:?}", cbor_response);
+    Ok(cbor_response)
 }
 
 async fn send_apdu_request(
@@ -192,10 +218,15 @@ async fn ctap1_sign(
 }
 
 async fn ctap2_make_credential(
-    _: &FidoDevice,
+    device: &FidoDevice,
     cid: u32,
     request: &Ctap2MakeCredentialRequest,
 ) -> Result<Ctap2MakeCredentialResponse, Error> {
+    debug!("CTAP2 makeCredential request: {:?}", request);
+
+    let cbor_request: CborRequest = request.into();
+    let cbor_response = send_cbor_request(device, cid, &request.into()).await?;
+
     unimplemented!("")
 }
 
@@ -280,12 +311,15 @@ pub async fn webauthn_make_credential(
     op: &MakeCredentialRequest,
 ) -> Result<MakeCredentialResponse, Error> {
     debug!("WebAuthn MakeCredential request: {:?}", op);
-    let (init, protocol) = negotiate_protocol(device, true, op.is_downgradable()).await?;
+    let ctap2_request: &Ctap2MakeCredentialRequest = &op.into();
+    let (init, protocol) =
+        negotiate_protocol(device, true, ctap2_request.is_downgradable()).await?;
     match protocol {
-        FidoProtocol::FIDO2 => ctap2_make_credential(device, init.cid, op).await,
+        FidoProtocol::FIDO2 => ctap2_make_credential(device, init.cid, ctap2_request).await,
         FidoProtocol::U2F => {
-            let register_request: RegisterRequest =
-                op.try_into().or(Err(TransportError::NegotiationFailed))?;
+            let register_request: RegisterRequest = ctap2_request
+                .try_into()
+                .or(Err(TransportError::NegotiationFailed))?;
             ctap1_register(device, init.cid, &register_request)
                 .await?
                 .try_into()
