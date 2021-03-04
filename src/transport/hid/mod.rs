@@ -18,7 +18,8 @@ use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
 use crate::proto::ctap1::{Ctap1VersionRequest, Ctap1VersionResponse};
 use crate::proto::ctap2::cbor::{CborRequest, CborResponse};
-use crate::proto::ctap2::Ctap2DowngradeCheck;
+use crate::proto::ctap2::Ctap2GetInfoResponse;
+use crate::proto::ctap2::{Ctap2CommandCode, Ctap2DowngradeCheck};
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2GetAssertionResponse};
 use crate::proto::ctap2::{Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse};
 
@@ -223,6 +224,14 @@ async fn ctap2_make_credential(
     request: &Ctap2MakeCredentialRequest,
 ) -> Result<Ctap2MakeCredentialResponse, Error> {
     debug!("CTAP2 makeCredential request: {:?}", request);
+
+    let cbor_request: CborRequest = CborRequest {
+        command: Ctap2CommandCode::AuthenticatorGetInfo,
+        encoded_data: vec![],
+    };
+    let cbor_response = send_cbor_request(device, cid, &cbor_request).await?;
+    let ctap_response: Ctap2GetInfoResponse = from_slice(&cbor_response.data.unwrap()).unwrap();
+    info!("GetInfo: {:?}", ctap_response);
 
     let cbor_request: CborRequest = request.into();
     let cbor_response = send_cbor_request(device, cid, &request.into()).await?;
