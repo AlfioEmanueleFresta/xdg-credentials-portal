@@ -2,8 +2,8 @@ extern crate serde_cbor;
 
 use serde_cbor::ser::to_vec;
 
-use crate::proto::ctap2::protocol::Ctap2CommandCode;
-use crate::proto::ctap2::protocol::Ctap2MakeCredentialRequest;
+use crate::proto::ctap2::model::Ctap2CommandCode;
+use crate::proto::ctap2::model::Ctap2MakeCredentialRequest;
 
 #[derive(Debug)]
 pub struct CborRequest {

@@ -1,6 +1,6 @@
 use std::io::{Error as IOError, ErrorKind as IOErrorKind};
 
-use crate::proto::ctap1::protocol::Ctap1VersionRequest;
+use crate::proto::ctap1::model::Ctap1VersionRequest;
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use byteorder::{BigEndian, WriteBytesExt};
 

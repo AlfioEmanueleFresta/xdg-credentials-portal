@@ -1,276 +1,124 @@
-use crate::proto::ctap1::apdu::{ApduResponse, ApduResponseStatus};
-use std::convert::TryFrom;
-use std::io::{BufRead, Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Read};
-use std::time::Duration;
+extern crate async_trait;
+extern crate log;
+extern crate tokio;
 
-use byteorder::{BigEndian, ReadBytesExt};
-use sha2::{Digest, Sha256};
-use x509_parser::parse_x509_der;
+use super::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
 
-#[derive(Debug)]
-pub enum Ctap1Transport {
-    BT,
-    BLE,
-    NFC,
-    USB,
+use async_trait::async_trait;
+use log::debug;
+use std::{convert::TryInto, marker::PhantomData, time::Duration};
+use tokio::time::{sleep, timeout as tokio_timeout};
+
+use super::{
+    Ctap1RegisterRequest, Ctap1RegisterResponse, Ctap1SignRequest, Ctap1SignResponse,
+    Ctap1VersionRequest, Ctap1VersionResponse,
+};
+use crate::{
+    proto::CtapError,
+    transport::{device::FidoDevice, error::Error, error::TransportError},
+};
+
+const UP_SLEEP: Duration = Duration::from_millis(150);
+const VERSION_TIMEOUT: Duration = Duration::from_millis(500);
+
+#[async_trait]
+pub trait Ctap1<T> {
+    async fn version(device: &mut T) -> Result<Ctap1VersionResponse, Error>;
+
+    async fn register(
+        device: &mut T,
+        op: &Ctap1RegisterRequest,
+    ) -> Result<Ctap1RegisterResponse, Error>;
+
+    async fn sign(device: &mut T, op: &Ctap1SignRequest) -> Result<Ctap1SignResponse, Error>;
 }
 
-#[derive(Debug)]
-pub enum Ctap1Version {
-    U2fV2,
+pub struct Ctap1Protocol<T: FidoDevice + ?Sized> {
+    device_type: PhantomData<T>,
 }
 
-#[derive(Debug)]
-pub struct Ctap1RegisteredKey {
-    pub version: Ctap1Version,
-    pub key_handle: Vec<u8>,
-    pub transports: Option<Vec<Ctap1Transport>>,
-    pub app_id: Option<String>,
-}
+#[async_trait]
+impl<T> Ctap1<T> for Ctap1Protocol<T>
+where
+    T: FidoDevice + Send,
+{
+    async fn register(
+        device: &mut T,
+        request: &Ctap1RegisterRequest,
+    ) -> Result<Ctap1RegisterResponse, Error> {
+        debug!("CTAP1 register request: {:?}", request);
+        // TODO iterate over exclude list
 
-impl Ctap1RegisteredKey {
-    pub fn new_u2f_v2(key_handle: &[u8]) -> Ctap1RegisteredKey {
-        Ctap1RegisteredKey {
-            version: Ctap1Version::U2fV2,
-            key_handle: Vec::from(key_handle),
-            transports: None,
-            app_id: None,
+        let apdu_request: ApduRequest = request.into();
+        let apdu_response =
+            Ctap1Protocol::send_apdu_request_wait_uv(device, &apdu_request, request.timeout)
+                .await?;
+        let status = apdu_response.status().or(Err(CtapError::Other))?;
+        if status != ApduResponseStatus::NoError {
+            return Err(Error::Ctap(CtapError::from(status)));
         }
+
+        let response: Ctap1RegisterResponse = apdu_response.try_into().unwrap();
+        debug!("CTAP1 register response: {:?}", response);
+        Ok(response)
+    }
+
+    async fn sign(device: &mut T, request: &Ctap1SignRequest) -> Result<Ctap1SignResponse, Error> {
+        debug!("CTAP1 sign request: {:?}", request);
+        // TODO iterate over exclude list
+
+        let apdu_request: ApduRequest = request.into();
+        let apdu_response =
+            Ctap1Protocol::send_apdu_request_wait_uv(device, &apdu_request, request.timeout)
+                .await?;
+        let status = apdu_response.status().or(Err(CtapError::Other))?;
+        if status != ApduResponseStatus::NoError {
+            return Err(Error::Ctap(CtapError::from(status)));
+        }
+
+        let response: Ctap1SignResponse = apdu_response.try_into().unwrap();
+        debug!("CTAP1 sign response: {:?}", response);
+        Ok(response)
+    }
+
+    async fn version(device: &mut T) -> Result<Ctap1VersionResponse, Error> {
+        let request = &Ctap1VersionRequest::new();
+        let apdu_request: ApduRequest = request.into();
+        let apdu_response = device
+            .send_apdu_request(&apdu_request, VERSION_TIMEOUT)
+            .await?;
+        let response: Ctap1VersionResponse = apdu_response.try_into().or(Err(CtapError::Other))?;
+        debug!("CTAP1 version response: {:?}", response);
+        Ok(response)
     }
 }
 
-#[derive(Debug)]
-pub struct Ctap1RegisterRequest {
-    pub version: Ctap1Version,
-    pub app_id: String,
-    pub challenge: Vec<u8>,
-    pub registered_keys: Vec<Ctap1RegisteredKey>,
-    pub timeout: Duration,
-    pub require_user_presence: bool,
-}
-
-impl Ctap1RegisterRequest {
-    pub fn new_u2f_v2(
-        app_id: &str,
-        challenge: &[u8],
-        registered_keys: Vec<Ctap1RegisteredKey>,
+impl<T> Ctap1Protocol<T>
+where
+    T: FidoDevice,
+{
+    async fn send_apdu_request_wait_uv(
+        device: &mut T,
+        request: &ApduRequest,
         timeout: Duration,
-        require_user_presence: bool,
-    ) -> Ctap1RegisterRequest {
-        Ctap1RegisterRequest {
-            version: Ctap1Version::U2fV2,
-            app_id: String::from(app_id),
-            challenge: Vec::from(challenge),
-            registered_keys,
-            timeout,
-            require_user_presence,
-        }
-    }
-
-    pub fn app_id_hash(&self) -> Vec<u8> {
-        let mut hasher = Sha256::default();
-        hasher.input(self.app_id.as_bytes());
-        hasher.result().to_vec()
-    }
-}
-
-#[derive(Debug)]
-pub struct Ctap1RegisterResponse {
-    pub version: Ctap1Version,
-    pub public_key: Vec<u8>,
-    pub key_handle: Vec<u8>,
-    pub attestation: Vec<u8>,
-    pub signature: Vec<u8>,
-}
-
-impl TryFrom<ApduResponse> for Ctap1RegisterResponse {
-    type Error = IOError;
-
-    fn try_from(apdu: ApduResponse) -> Result<Self, Self::Error> {
-        if apdu.status()? != ApduResponseStatus::NoError {
-            return Err(IOError::new(
-                IOErrorKind::InvalidInput,
-                "APDU packets need to have status NoError to be converted..",
-            ));
-        }
-
-        let data = apdu.data.ok_or(IOError::new(
-            IOErrorKind::InvalidInput,
-            "Emtpy APDU packet.",
-        ))?;
-
-        let mut cursor = IOCursor::new(data);
-        cursor.consume(1); // Reserved bytes.
-
-        let mut public_key = vec![0u8; 65];
-        cursor.read_exact(&mut public_key)?;
-
-        let key_handle_len = cursor.read_u8()? as u64;
-        let mut key_handle = vec![0u8; key_handle_len as usize];
-        cursor.read_exact(&mut key_handle)?;
-
-        let mut remaining = vec![];
-        cursor.read_to_end(&mut remaining)?;
-
-        let (signature, _) = parse_x509_der(&remaining).or(Err(IOError::new(
-            IOErrorKind::InvalidData,
-            "Failed to parse X509 attestation data",
-        )))?;
-        let signature = Vec::from(signature);
-        let attestation = Vec::from(&remaining[0..remaining.len() - signature.len()]);
-
-        Ok(Ctap1RegisterResponse {
-            version: Ctap1Version::U2fV2,
-            public_key,
-            key_handle,
-            attestation,
-            signature,
-        })
-    }
-}
-
-impl Ctap1RegisterResponse {
-    pub fn as_registered_key(&self) -> Result<Ctap1RegisteredKey, IOError> {
-        Ok(Ctap1RegisteredKey::new_u2f_v2(&self.key_handle))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Ctap1SignRequest {
-    pub app_id: String,
-    pub challenge: Vec<u8>,
-    pub key_handle: Vec<u8>,
-    pub timeout: Duration,
-    pub require_user_presence: bool,
-}
-
-impl Ctap1SignRequest {
-    pub fn new(
-        app_id: &str,
-        challenge: &[u8],
-        key_handle: &[u8],
-        timeout: Duration,
-        require_user_presence: bool,
-    ) -> Ctap1SignRequest {
-        Ctap1SignRequest {
-            app_id: String::from(app_id),
-            challenge: Vec::from(challenge),
-            key_handle: Vec::from(key_handle),
-            timeout,
-            require_user_presence,
-        }
-    }
-
-    pub fn app_id_hash(&self) -> Vec<u8> {
-        let mut hasher = Sha256::default();
-        hasher.input(self.app_id.as_bytes());
-        hasher.result().to_vec()
-    }
-}
-
-#[derive(Debug)]
-pub struct Ctap1VersionRequest {}
-
-impl Ctap1VersionRequest {
-    pub fn new() -> Ctap1VersionRequest {
-        Ctap1VersionRequest {}
-    }
-}
-
-#[derive(Debug)]
-pub struct Ctap1VersionResponse {
-    pub version: Ctap1Version,
-}
-
-impl TryFrom<ApduResponse> for Ctap1VersionResponse {
-    type Error = IOError;
-
-    fn try_from(apdu: ApduResponse) -> Result<Self, Self::Error> {
-        if apdu.status()? != ApduResponseStatus::NoError {
-            return Err(IOError::new(
-                IOErrorKind::InvalidInput,
-                "APDU packets need to have status NoError to be converted..",
-            ));
-        }
-
-        let data = apdu.data.ok_or(IOError::new(
-            IOErrorKind::InvalidInput,
-            "Emtpy APDU packet.",
-        ))?;
-
-        let version_string = String::from_utf8(data).or(Err(IOError::new(
-            IOErrorKind::InvalidInput,
-            "Invalid UTF-8 bytes in CTAP1 version string",
-        )))?;
-
-        let version = match version_string.as_str() {
-            "U2F_V2" => Ctap1Version::U2fV2,
-            _ => {
-                return Err(IOError::new(
-                    IOErrorKind::InvalidInput,
-                    format!("Invalid CTAP1 version string: {:}", version_string),
-                ))
+    ) -> Result<ApduResponse, Error> {
+        tokio_timeout(timeout, async {
+            loop {
+                let apdu_response = device.send_apdu_request(request, timeout).await?;
+                let apdu_status = apdu_response
+                    .status()
+                    .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
+                let ctap_error: CtapError = apdu_status.into();
+                match ctap_error {
+                    CtapError::Ok => return Ok(apdu_response),
+                    CtapError::UserPresenceRequired => (), // Sleep some more.
+                    _ => return Err(Error::Ctap(ctap_error)),
+                };
+                debug!("UP required. Sleeping for {:?}.", UP_SLEEP);
+                sleep(UP_SLEEP).await;
             }
-        };
-
-        Ok(Ctap1VersionResponse { version })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Ctap1SignResponse {
-    pub user_presence_verified: bool,
-    pub signature: Vec<u8>,
-}
-
-impl TryFrom<ApduResponse> for Ctap1SignResponse {
-    type Error = IOError;
-
-    fn try_from(apdu: ApduResponse) -> Result<Self, Self::Error> {
-        if apdu.status()? != ApduResponseStatus::NoError {
-            return Err(IOError::new(
-                IOErrorKind::InvalidInput,
-                "APDU packets need to have status NoError to be converted..",
-            ));
-        }
-
-        let data = apdu.data.ok_or(IOError::new(
-            IOErrorKind::InvalidInput,
-            "Emtpy APDU packet.",
-        ))?;
-
-        let mut cursor = IOCursor::new(data);
-        let user_presence_verified = match cursor.read_u8()? {
-            0x01 => true,
-            _ => false,
-        };
-        let _counter = cursor.read_u32::<BigEndian>()?;
-
-        let mut signature = vec![];
-        cursor.read_to_end(&mut signature)?;
-
-        Ok(Ctap1SignResponse {
-            user_presence_verified,
-            signature,
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::proto::ctap1::apdu::ApduResponse;
-    use crate::proto::ctap1::Ctap1RegisterResponse;
-    use std::convert::TryInto;
-
-    #[test]
-    fn register_response_apdu_to_ctap1() {
-        let apdu = hex::decode("05046DDBE3C25D974C9A403D6C648ED41C219D44734C43986B4053B325BE01C31E28F146731E5C21BA0E0E1938DA4C1FECAD650A2971A13CF6076BF52B52C19F8D0E40602CFD267868E84D4852BD5B008BC6CE0211D4858C8A647328A13B7D5C0A42B3893D63A58FCA7BD3EBB74F55CE537195DFF0113D4C561BBB7DFAC0C0ECD1AFB53082015930820100A003020102020102300A06082A8648CE3D0403023028311530130603550403130C5365637572697479204B6579310F300D060355040A1306476F6F676C653022180F32303030303130313030303030305A180F32303939313233313233353935395A3028311530130603550403130C5365637572697479204B6579310F300D060355040A1306476F6F676C653059301306072A8648CE3D020106082A8648CE3D030107034200040393AF897BE858E88C1953876A1A538477C4DA6E6EA14ACF0A2FD89A4DCCF95878A8CD2929029CC1D794BFFB9C37547CBBB5BB31AB3A6756ACF74F123CECD45CA31730153013060B2B0601040182E51C020101040403020470300A06082A8648CE3D040302034700304402207F958ABE6CF08CB2E9A03774D52DF8C0EA261E1AC0C283409FEDD8D36DFAF09302204EEB7501C720428D206E1B092D8D26CA8536B70F5F09AEA99562390BEF1BA7EC3044022031413D6E238A5F998B26B3931655C411847D99776B6E5CF15AA2E11BFAF325F00220098745DA82C11BB242934BAC6AE95155EAAD68520D695D46982DA9B2C94F94E3").unwrap();
-        let apdu = ApduResponse::new_success(&apdu);
-        let decoded: Ctap1RegisterResponse = apdu.try_into().unwrap();
-
-        assert_eq!(decoded.public_key, hex::decode("046DDBE3C25D974C9A403D6C648ED41C219D44734C43986B4053B325BE01C31E28F146731E5C21BA0E0E1938DA4C1FECAD650A2971A13CF6076BF52B52C19F8D0E").unwrap());
-        assert_eq!(decoded.key_handle, hex::decode("602CFD267868E84D4852BD5B008BC6CE0211D4858C8A647328A13B7D5C0A42B3893D63A58FCA7BD3EBB74F55CE537195DFF0113D4C561BBB7DFAC0C0ECD1AFB5").unwrap());
-        assert_eq!(decoded.attestation, hex::decode("3082015930820100A003020102020102300A06082A8648CE3D0403023028311530130603550403130C5365637572697479204B6579310F300D060355040A1306476F6F676C653022180F32303030303130313030303030305A180F32303939313233313233353935395A3028311530130603550403130C5365637572697479204B6579310F300D060355040A1306476F6F676C653059301306072A8648CE3D020106082A8648CE3D030107034200040393AF897BE858E88C1953876A1A538477C4DA6E6EA14ACF0A2FD89A4DCCF95878A8CD2929029CC1D794BFFB9C37547CBBB5BB31AB3A6756ACF74F123CECD45CA31730153013060B2B0601040182E51C020101040403020470300A06082A8648CE3D040302034700304402207F958ABE6CF08CB2E9A03774D52DF8C0EA261E1AC0C283409FEDD8D36DFAF09302204EEB7501C720428D206E1B092D8D26CA8536B70F5F09AEA99562390BEF1BA7EC").unwrap());
-        assert_eq!(decoded.signature, hex::decode("3044022031413D6E238A5F998B26B3931655C411847D99776B6E5CF15AA2E11BFAF325F00220098745DA82C11BB242934BAC6AE95155EAAD68520D695D46982DA9B2C94F94E3").unwrap());
+        .await
+        .or(Err(Error::Ctap(CtapError::UserActionTimeout)))?
     }
 }

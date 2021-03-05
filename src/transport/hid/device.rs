@@ -10,47 +10,27 @@ use byteorder::{BigEndian, ReadBytesExt};
 use hidapi::DeviceInfo;
 use hidapi::HidApi;
 use log::{debug, warn};
-use tokio::time::{sleep, timeout as tokio_timeout};
 
-use core::time;
 use rand::{thread_rng, Rng};
-use serde_cbor::{from_slice, ser::to_vec_packed, to_vec};
+use std::fmt;
+use std::time::Duration;
 use std::{
     convert::TryFrom,
     io::{Cursor as IOCursor, Seek, SeekFrom},
 };
-use std::{fmt, time::Duration};
 
-use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
-use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
-use crate::proto::ctap1::{Ctap1VersionRequest, Ctap1VersionResponse};
+use crate::proto::ctap1::apdu::ApduResponse;
 use crate::proto::ctap2::cbor::{CborRequest, CborResponse};
-use crate::proto::ctap2::Ctap2GetInfoResponse;
-use crate::proto::ctap2::{Ctap2CommandCode, Ctap2DowngradeCheck};
-use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2GetAssertionResponse};
-use crate::proto::ctap2::{Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse};
-use crate::{
-    ops::u2f,
-    proto::ctap1::apdu::{ApduRequest, ApduResponse, ApduResponseStatus},
-};
-
-use crate::ops::u2f::{RegisterRequest, SignRequest};
-use crate::ops::u2f::{RegisterResponse, SignResponse};
-use crate::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
-use crate::ops::webauthn::{GetAssertionResponse, MakeCredentialResponse};
-
-use crate::fido::FidoProtocol;
 
 use super::framing::{HidCommand, HidMessage, HidMessageParser, HidMessageParserState};
 
 use crate::transport::device::{FidoDevice, SupportedProtocols};
-use crate::transport::error::{CtapError, Error, TransportError};
+use crate::transport::error::{Error, TransportError};
 
 const INIT_NONCE_LEN: usize = 8;
 const INIT_PAYLOAD_LEN: usize = 17;
 const INIT_TIMEOUT: Duration = Duration::from_millis(200);
 
-const UP_SLEEP: Duration = Duration::from_millis(150);
 const PACKET_SIZE: usize = 64;
 const REPORT_ID: u8 = 0x00;
 
@@ -265,31 +245,6 @@ impl FidoDevice for HidFidoDevice {
         debug!("Received APDU response: {:?}", apdu_response);
         Ok(apdu_response)
     }
-
-    //     if let None = self.init {
-    //         self.init().await?;
-    //         assert!(self.init.is_some());
-    //     }
-
-    //     tokio_timeout(timeout, async {
-    //         loop {
-    //             let apdu_response = self.send_ctap1_request_single(request).await?;
-    //             let apdu_status = apdu_response
-    //                 .status()
-    //                 .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
-    //             let ctap_error: CtapError = apdu_status.into();
-    //             match ctap_error {
-    //                 CtapError::Ok => return Ok(apdu_response),
-    //                 CtapError::UserPresenceRequired => (), // Sleep some more.
-    //                 _ => return Err(Error::Ctap(ctap_error)),
-    //             };
-    //             debug!("UP required. Sleeping for {:?}.", UP_SLEEP);
-    //             sleep(UP_SLEEP).await;
-    //         }
-    //     })
-    //     .await
-    //     .or(Err(Error::Ctap(CtapError::UserActionTimeout)))?
-    // }
 
     async fn send_cbor_request(
         &mut self,

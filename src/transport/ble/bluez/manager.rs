@@ -2,19 +2,19 @@ use super::device::{FidoDevice as Device, FidoEndpoints as Endpoints};
 use super::gatt::{get_gatt_characteristic, get_gatt_service};
 use super::Error;
 
+use crate::fido::FidoProtocol;
+use crate::fido::FidoRevision;
 use crate::transport::ble::framing::{
     BleCommand, BleFrame as Frame, BleFrameParser, BleFrameParserResult,
 };
-use crate::transport::ble::FidoRevision;
 
 use blurz::{
     BluetoothAdapter, BluetoothDevice, BluetoothDiscoverySession, BluetoothEvent,
-    BluetoothGATTCharacteristic, BluetoothGATTService, BluetoothSession,
+    BluetoothGATTCharacteristic, BluetoothSession,
 };
 
 use byteorder::{BigEndian, ReadBytesExt};
 use log::{debug, info, warn};
-use std::collections::HashSet;
 use std::io::Cursor as IOCursor;
 use std::thread::sleep;
 use std::time::Duration;
@@ -30,6 +30,36 @@ pub const FIDO_STATUS_UUID: &str = "f1d0fff2-deaa-ecee-b42f-c9ba7ed623bb";
 pub const FIDO_CONTROL_POINT_LENGTH_UUID: &str = "f1d0fff3-deaa-ecee-b42f-c9ba7ed623bb";
 pub const FIDO_REVISION_BITFIELD_UUID: &str = "f1d0fff4-deaa-ecee-b42f-c9ba7ed623bb";
 
+#[derive(Debug, Copy, Clone)]
+pub struct SupportedRevisions {
+    pub u2fv11: bool,
+    pub u2fv12: bool,
+    pub v2: bool,
+}
+
+impl SupportedRevisions {
+    pub fn select_protocol(&self, protocol: FidoProtocol) -> Option<FidoRevision> {
+        match protocol {
+            FidoProtocol::FIDO2 => {
+                if self.v2 {
+                    Some(FidoRevision::V2)
+                } else {
+                    None
+                }
+            }
+            FidoProtocol::U2F => {
+                if self.u2fv12 {
+                    Some(FidoRevision::U2fv12)
+                } else if self.u2fv11 {
+                    Some(FidoRevision::U2fv11)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
 pub async fn start_discovery() -> Result<(), Error> {
     tokio::task::spawn_blocking(move || start_discovery_blocking())
         .await
@@ -42,7 +72,7 @@ pub async fn list_devices() -> Result<Vec<Device>, Error> {
         .unwrap()
 }
 
-pub async fn supported_fido_revisions(target: &Device) -> Result<HashSet<FidoRevision>, Error> {
+pub async fn supported_fido_revisions(target: &Device) -> Result<SupportedRevisions, Error> {
     let target = target.clone();
     tokio::task::spawn_blocking(move || supported_fido_revisions_blocking(&target))
         .await
@@ -53,11 +83,12 @@ pub async fn request(
     device: &Device,
     revision: &FidoRevision,
     frame: &Frame,
+    timeout: Duration,
 ) -> Result<Frame, Error> {
     let device = device.clone();
     let revision = revision.clone();
     let frame = frame.clone();
-    tokio::task::spawn_blocking(move || request_blocking(&device, &revision, &frame))
+    tokio::task::spawn_blocking(move || request_blocking(&device, &revision, &frame, timeout))
         .await
         .unwrap()
 }
@@ -109,6 +140,7 @@ fn request_blocking(
     device: &Device,
     revision: &FidoRevision,
     frame: &Frame,
+    timeout: Duration,
 ) -> Result<Frame, Error> {
     let session = BluetoothSession::create_session(None).or(Err(Error::Unavailable))?;
     connect(&session, device)?;
@@ -132,7 +164,7 @@ fn request_blocking(
             .or(Err(Error::OperationFailed))?;
     }
 
-    let frame = wait_for_response(&session, &endpoints)?;
+    let frame = wait_for_response(&session, &endpoints, timeout)?;
     status.stop_notify().or(Err(Error::OperationFailed))?;
     debug!("Unregistered for notifications");
 
@@ -227,7 +259,7 @@ fn discover_services(session: &BluetoothSession, target: &Device) -> Result<Endp
     Ok(endpoints)
 }
 
-fn supported_fido_revisions_blocking(target: &Device) -> Result<HashSet<FidoRevision>, Error> {
+fn supported_fido_revisions_blocking(target: &Device) -> Result<SupportedRevisions, Error> {
     let session = BluetoothSession::create_session(None).or(Err(Error::Unavailable))?;
     connect(&session, &target)?;
     let endpoints = discover_services(&session, target)?;
@@ -241,17 +273,11 @@ fn supported_fido_revisions_blocking(target: &Device) -> Result<HashSet<FidoRevi
     let bitfield = revision.iter().next().ok_or(Error::OperationFailed)?;
     debug!("Supported revision bitfield: {:?}", revision);
 
-    let mut supported = HashSet::new();
-    if bitfield & FidoRevision::V2 as u8 != 0x00 {
-        supported.insert(FidoRevision::V2);
-    }
-    if bitfield & FidoRevision::U2fv12 as u8 != 0x00 {
-        supported.insert(FidoRevision::U2fv12);
-    }
-    if bitfield & FidoRevision::U2fv11 as u8 != 0x00 {
-        supported.insert(FidoRevision::U2fv11);
-    }
-
+    let supported = SupportedRevisions {
+        u2fv11: bitfield & FidoRevision::U2fv11 as u8 != 0x00,
+        u2fv12: bitfield & FidoRevision::U2fv12 as u8 != 0x00,
+        v2: bitfield & FidoRevision::V2 as u8 != 0x00,
+    };
     info!("Device reported supporting FIDO revisions {:?}", supported);
     Ok(supported)
 }
@@ -272,7 +298,11 @@ fn select_fido_revision(
     Ok(())
 }
 
-fn wait_for_response(session: &BluetoothSession, endpoints: &Endpoints) -> Result<Frame, Error> {
+fn wait_for_response(
+    session: &BluetoothSession,
+    endpoints: &Endpoints,
+    timeout: Duration,
+) -> Result<Frame, Error> {
     let mut waited_for = 0;
     loop {
         let fragments = receive_fragments(session, endpoints, WAIT_LOOP_MS);
@@ -312,7 +342,7 @@ fn wait_for_response(session: &BluetoothSession, endpoints: &Endpoints) -> Resul
             }
         }
 
-        if waited_for > DEVICE_RESPONSE_TIMEOUT_MS {
+        if waited_for > timeout.as_millis() as u32 {
             warn!("Timeout waiting for a response from the BLE device.");
             return Err(Error::Timeout);
         }

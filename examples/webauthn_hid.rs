@@ -1,17 +1,18 @@
 extern crate base64_url;
 extern crate log;
 
-use backend::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
+use backend::ops::webauthn::MakeCredentialRequest;
 use backend::proto::ctap2::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialRpEntity,
     Ctap2PublicKeyCredentialType, Ctap2PublicKeyCredentialUserEntity,
 };
-use backend::transport::hid::{
-    list_devices, webauthn_get_assertion, webauthn_make_credential, wink,
-};
+use backend::transport::hid::list_devices;
+use backend::webauthn::{WebAuthn, WebAuthnManager};
 
 use log::info;
 use std::time::Duration;
+
+const TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,9 +25,9 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let challenge = base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
 
     // Selecting a device
-    for device in devices {
-        println!("Selected BLE authenticator: {}", &device);
-        wink(&device);
+    for mut device in devices {
+        println!("Selected HID authenticator: {}", &device);
+        device.wink(TIMEOUT).await?;
 
         // Make Credentials ceremony
         let make_credentials_request = MakeCredentialRequest {
@@ -47,9 +48,10 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }],
             exclude: None,
             extensions_cbor: vec![],
-            timeout: Duration::from_secs(30),
+            timeout: TIMEOUT,
         };
-        let response = webauthn_make_credential(&device, &make_credentials_request)
+
+        let response = WebAuthnManager::make_credential(&mut device, &make_credentials_request)
             .await
             .unwrap();
         info!("WebAuthn MakeCredential response: {:?}", response);

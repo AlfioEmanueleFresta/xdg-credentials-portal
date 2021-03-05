@@ -3,7 +3,7 @@ extern crate log;
 extern crate tokio;
 
 use backend::ops::u2f::{RegisterRequest, SignRequest};
-use backend::transport::hid::list_devices;
+use backend::transport::ble::list_devices;
 use backend::u2f::{U2FManager, U2F};
 
 use log::info;
@@ -19,9 +19,6 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Found {} devices.", devices.len());
     for mut device in devices {
-        info!("Winking device: {}", device);
-        device.wink(TIMEOUT).await?;
-
         const APP_ID: &str = "https://foo.example.org";
         let challenge: &[u8] =
             &base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();

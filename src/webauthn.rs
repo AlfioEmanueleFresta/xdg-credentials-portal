@@ -6,23 +6,21 @@ extern crate serde_cbor;
 
 use async_trait::async_trait;
 use log::{debug, info, warn};
-use std::{convert::TryInto, fmt::Display, marker::PhantomData};
+use std::convert::TryInto;
+use std::marker::PhantomData;
 
 use crate::ops::u2f::{RegisterRequest, SignRequest};
 use crate::ops::webauthn::{GetAssertionRequest, GetAssertionResponse};
 use crate::ops::webauthn::{MakeCredentialRequest, MakeCredentialResponse};
 
-use crate::proto::ctap1::{Ctap1, Ctap1Manager};
+use crate::proto::ctap1::{Ctap1, Ctap1Protocol};
 use crate::proto::ctap2::Ctap2DowngradeCheck;
-use crate::proto::ctap2::{Ctap2, Ctap2MakeCredentialRequest, Ctap2Manager};
+use crate::proto::ctap2::{Ctap2, Ctap2MakeCredentialRequest, Ctap2Protocol};
 
 use crate::fido::FidoProtocol;
 
 use crate::transport::device::FidoDevice;
 use crate::transport::error::{CtapError, Error, TransportError};
-
-const PACKET_SIZE: usize = 64;
-const REPORT_ID: u8 = 0x00;
 
 #[async_trait]
 pub trait WebAuthn<T> {
@@ -55,13 +53,13 @@ where
             WebAuthnManager::negotiate_protocol(device, ctap2_request.is_downgradable()).await?;
         match protocol {
             FidoProtocol::FIDO2 => {
-                Ctap2Manager::make_credential(device, ctap2_request, op.timeout).await
+                Ctap2Protocol::make_credential(device, ctap2_request, op.timeout).await
             }
             FidoProtocol::U2F => {
                 let register_request: RegisterRequest = ctap2_request
                     .try_into()
                     .or(Err(TransportError::NegotiationFailed))?;
-                Ctap1Manager::register(device, &register_request)
+                Ctap1Protocol::register(device, &register_request)
                     .await?
                     .try_into()
                     .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
@@ -75,11 +73,11 @@ where
     ) -> Result<GetAssertionResponse, Error> {
         let protocol = WebAuthnManager::negotiate_protocol(device, op.is_downgradable()).await?;
         match protocol {
-            FidoProtocol::FIDO2 => Ctap2Manager::get_assertion(device, op, op.timeout).await,
+            FidoProtocol::FIDO2 => Ctap2Protocol::get_assertion(device, op, op.timeout).await,
             FidoProtocol::U2F => {
                 let sign_request: SignRequest =
                     op.try_into().or(Err(TransportError::NegotiationFailed))?;
-                Ctap1Manager::sign(device, &sign_request)
+                Ctap1Protocol::sign(device, &sign_request)
                     .await?
                     .try_into()
                     .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
@@ -106,7 +104,7 @@ where
             FidoProtocol::FIDO2
         } else {
             // Ensure CTAP1 version is reported correctly.
-            Ctap1Manager::version(device).await?;
+            Ctap1Protocol::version(device).await?;
             FidoProtocol::U2F
         };
 

@@ -1,24 +1,20 @@
 extern crate async_trait;
 extern crate hidapi;
-extern crate log;
 extern crate serde;
 extern crate serde_cbor;
 
 use async_trait::async_trait;
-use log::{info, warn};
+use std::fmt::Display;
 use std::marker::PhantomData;
-use std::{fmt::Display, time::Duration};
 
-use crate::proto::ctap1::{Ctap1, Ctap1Manager};
+use crate::proto::ctap1::{Ctap1, Ctap1Protocol};
 use crate::transport::device::FidoDevice;
 
 use crate::ops::u2f::{RegisterRequest, SignRequest};
 use crate::ops::u2f::{RegisterResponse, SignResponse};
 
-use crate::{
-    fido::FidoProtocol,
-    transport::error::{Error, TransportError},
-};
+use crate::fido::FidoProtocol;
+use crate::transport::error::{Error, TransportError};
 
 #[async_trait]
 pub trait U2F<T> {
@@ -38,7 +34,7 @@ where
     async fn register(device: &mut T, op: &RegisterRequest) -> Result<RegisterResponse, Error> {
         let protocol = U2FManager::negotiate_u2f_protocol(device).await?;
         match protocol {
-            FidoProtocol::U2F => Ctap1Manager::register(device, op).await,
+            FidoProtocol::U2F => Ctap1Protocol::register(device, op).await,
             _ => Err(Error::Transport(TransportError::NegotiationFailed)),
         }
     }
@@ -47,7 +43,7 @@ where
         let protocol = U2FManager::negotiate_u2f_protocol(device).await?;
 
         match protocol {
-            FidoProtocol::U2F => Ctap1Manager::sign(device, op).await,
+            FidoProtocol::U2F => Ctap1Protocol::sign(device, op).await,
             _ => Err(Error::Transport(TransportError::NegotiationFailed)),
         }
     }
@@ -63,7 +59,7 @@ where
             return Err(Error::Transport(TransportError::NegotiationFailed));
         }
         // Ensure CTAP1 version is reported correctly.
-        Ctap1Manager::version(device).await?;
+        Ctap1Protocol::version(device).await?;
         Ok(FidoProtocol::U2F)
     }
 }
