@@ -48,11 +48,6 @@ fn variant_str(string: &str) -> Variant<Box<dyn RefArg>> {
     Variant(b)
 }
 
-pub enum ConfirmationResponse {
-    Allow,
-    Deny,
-}
-
 pub enum CancellationResponse {
     UserCancel,
 }

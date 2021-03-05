@@ -13,10 +13,9 @@ use super::{
     Ctap1RegisterRequest, Ctap1RegisterResponse, Ctap1SignRequest, Ctap1SignResponse,
     Ctap1VersionRequest, Ctap1VersionResponse,
 };
-use crate::{
-    proto::CtapError,
-    transport::{device::FidoDevice, error::Error, error::TransportError},
-};
+use crate::proto::CtapError;
+use crate::transport::device::FidoDevice;
+use crate::transport::error::{Error, TransportError};
 
 const UP_SLEEP: Duration = Duration::from_millis(150);
 const VERSION_TIMEOUT: Duration = Duration::from_millis(500);
@@ -65,7 +64,6 @@ where
 
     async fn sign(device: &mut T, request: &Ctap1SignRequest) -> Result<Ctap1SignResponse, Error> {
         debug!("CTAP1 sign request: {:?}", request);
-        // TODO iterate over exclude list
 
         let apdu_request: ApduRequest = request.into();
         let apdu_response =

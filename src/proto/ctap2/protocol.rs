@@ -55,16 +55,16 @@ where
         let ctap_response: Ctap2GetInfoResponse = from_slice(&cbor_response.data.unwrap()).unwrap();
         info!("GetInfo: {:?}", ctap_response);
 
-        let cbor_request: CborRequest = request.into();
-        let cbor_response = device.send_cbor_request(&request.into(), timeout).await?;
+        let _cbor_request: CborRequest = request.into();
+        let _cbor_response = device.send_cbor_request(&request.into(), timeout).await?;
 
         unimplemented!()
     }
 
     async fn get_assertion(
-        device: &mut T,
-        request: &Ctap2GetAssertionRequest,
-        timeout: Duration,
+        _: &mut T,
+        _: &Ctap2GetAssertionRequest,
+        _: Duration,
     ) -> Result<Ctap2GetAssertionResponse, Error> {
         unimplemented!()
     }

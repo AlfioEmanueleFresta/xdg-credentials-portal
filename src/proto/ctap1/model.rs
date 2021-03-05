@@ -47,6 +47,9 @@ pub struct Ctap1RegisterRequest {
     pub registered_keys: Vec<Ctap1RegisteredKey>,
     pub timeout: Duration,
     pub require_user_presence: bool,
+
+    /// this is a check-only request to process the exclusion list
+    pub check_only: bool,
 }
 
 impl Ctap1RegisterRequest {
@@ -61,6 +64,7 @@ impl Ctap1RegisterRequest {
             version: Ctap1Version::U2fV2,
             app_id: String::from(app_id),
             challenge: Vec::from(challenge),
+            check_only: false,
             registered_keys,
             timeout,
             require_user_presence,

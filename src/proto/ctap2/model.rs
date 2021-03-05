@@ -4,7 +4,6 @@ extern crate serde_cbor;
 extern crate serde_indexed;
 extern crate serde_repr;
 
-use base64_url::base64::display;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use serde_bytes::ByteBuf;
 use serde_derive::{Deserialize, Serialize};

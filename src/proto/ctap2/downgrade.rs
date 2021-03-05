@@ -9,9 +9,9 @@ use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1RegisterResponse, Ctap1Tran
 use crate::proto::ctap1::{Ctap1RegisteredKey, Ctap1Version};
 use crate::proto::ctap1::{Ctap1SignRequest, Ctap1SignResponse};
 
+use crate::proto::ctap2::Ctap2Transport;
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2GetAssertionResponse};
 use crate::proto::ctap2::{Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse};
-use crate::proto::ctap2::{Ctap2PublicKeyCredentialDescriptor, Ctap2Transport};
 
 // FIDO2 operations can *sometimes* be downgrade to FIDO U2F operations.
 // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#u2f-interoperability
@@ -77,6 +77,7 @@ impl TryFrom<&Ctap2MakeCredentialRequest> for Ctap1RegisterRequest {
                 .collect(),
             require_user_presence: ctap2.options.is_some()
                 && ctap2.options.unwrap().up.unwrap_or(false),
+            check_only: false,
             timeout: Duration::from_secs(2),
         })
     }
