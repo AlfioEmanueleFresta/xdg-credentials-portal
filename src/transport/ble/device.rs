@@ -1,11 +1,11 @@
 use super::bluez::FidoDevice as BlueZFidoDevice;
 
 #[derive(Debug, Clone)]
-pub struct FidoDevice {
+pub struct BleFidoDevice {
     bluez_device: BlueZFidoDevice,
 }
 
-impl FidoDevice {
+impl BleFidoDevice {
     pub fn alias(&self) -> String {
         self.bluez_device.alias.clone()
     }
@@ -19,7 +19,7 @@ impl FidoDevice {
     }
 }
 
-impl From<&BlueZFidoDevice> for FidoDevice {
+impl From<&BlueZFidoDevice> for BleFidoDevice {
     fn from(bluez_device: &BlueZFidoDevice) -> Self {
         Self {
             bluez_device: bluez_device.clone(),
@@ -27,7 +27,7 @@ impl From<&BlueZFidoDevice> for FidoDevice {
     }
 }
 
-impl Into<BlueZFidoDevice> for &FidoDevice {
+impl Into<BlueZFidoDevice> for &BleFidoDevice {
     fn into(self) -> BlueZFidoDevice {
         self.bluez_device.clone()
     }

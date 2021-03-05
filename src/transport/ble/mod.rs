@@ -4,7 +4,7 @@ pub mod framing;
 
 extern crate log;
 
-pub use device::FidoDevice;
+pub use device::BleFidoDevice;
 
 use bluez::FidoDevice as BluezDevice;
 
@@ -34,7 +34,7 @@ use framing::BleCommand;
 
 use framing::BleFrame;
 
-pub async fn list_devices() -> Result<Vec<FidoDevice>, Error> {
+pub async fn list_devices() -> Result<Vec<BleFidoDevice>, Error> {
     let devices = bluez::list_devices()
         .await
         .or(Err(Error::Transport(TransportError::TransportUnavailable)))?
@@ -45,7 +45,7 @@ pub async fn list_devices() -> Result<Vec<FidoDevice>, Error> {
 }
 
 async fn negotiate_protocol(
-    device: &FidoDevice,
+    device: &BleFidoDevice,
     allow_fido2: bool,
     allow_u2f: bool,
 ) -> Result<Option<(FidoProtocol, FidoRevision)>, Error> {
@@ -72,7 +72,7 @@ async fn negotiate_protocol(
 }
 
 pub async fn webauthn_make_credential(
-    device: &FidoDevice,
+    device: &BleFidoDevice,
     op: &MakeCredentialRequest,
 ) -> Result<MakeCredentialResponse, Error> {
     let ctap2_request: &Ctap2MakeCredentialRequest = &op.into();
@@ -95,7 +95,7 @@ pub async fn webauthn_make_credential(
 }
 
 pub async fn webauthn_get_assertion(
-    device: &FidoDevice,
+    device: &BleFidoDevice,
     op: &GetAssertionRequest,
 ) -> Result<GetAssertionResponse, Error> {
     let (protocol, revision) = negotiate_protocol(device, true, op.is_downgradable())
@@ -116,7 +116,7 @@ pub async fn webauthn_get_assertion(
 }
 
 pub async fn u2f_register(
-    device: &FidoDevice,
+    device: &BleFidoDevice,
     op: &RegisterRequest,
 ) -> Result<RegisterResponse, Error> {
     let (protocol, revision) = negotiate_protocol(device, false, true)
@@ -129,7 +129,7 @@ pub async fn u2f_register(
     }
 }
 
-pub async fn u2f_sign(device: &FidoDevice, op: &SignRequest) -> Result<SignResponse, Error> {
+pub async fn u2f_sign(device: &BleFidoDevice, op: &SignRequest) -> Result<SignResponse, Error> {
     let (protocol, revision) = negotiate_protocol(device, false, true)
         .await?
         .ok_or(Transport(TransportError::NegotiationFailed))?;
@@ -141,21 +141,21 @@ pub async fn u2f_sign(device: &FidoDevice, op: &SignRequest) -> Result<SignRespo
 }
 
 async fn ctap2_make_credential(
-    _: &FidoDevice,
+    _: &BleFidoDevice,
     _: &Ctap2MakeCredentialRequest,
 ) -> Result<Ctap2MakeCredentialResponse, Error> {
     unimplemented!()
 }
 
 async fn ctap2_get_assertion(
-    _: &FidoDevice,
+    _: &BleFidoDevice,
     _: &Ctap2GetAssertionRequest,
 ) -> Result<Ctap2GetAssertionResponse, Error> {
     unimplemented!()
 }
 
 async fn ctap1_register(
-    device: &FidoDevice,
+    device: &BleFidoDevice,
     revision: &FidoRevision,
     request: &Ctap1RegisterRequest,
 ) -> Result<Ctap1RegisterResponse, Error> {
@@ -174,7 +174,7 @@ async fn ctap1_register(
 }
 
 async fn ctap1_sign(
-    device: &FidoDevice,
+    device: &BleFidoDevice,
     revision: &FidoRevision,
     request: &Ctap1SignRequest,
 ) -> Result<Ctap1SignResponse, Error> {
@@ -193,7 +193,7 @@ async fn ctap1_sign(
 }
 
 async fn send_apdu_request(
-    device: &FidoDevice,
+    device: &BleFidoDevice,
     revision: &FidoRevision,
     request: ApduRequest,
 ) -> Result<ApduResponse, Error> {

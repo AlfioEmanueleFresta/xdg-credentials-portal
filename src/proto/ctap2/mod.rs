@@ -3,9 +3,11 @@ extern crate async_trait;
 pub mod cbor;
 
 mod downgrade;
+mod manager;
 mod protocol;
 
 pub use downgrade::Ctap2DowngradeCheck;
+pub use manager::{Ctap2, Ctap2Manager};
 pub use protocol::Ctap2GetInfoResponse;
 pub use protocol::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CommandCode, Ctap2CredentialType,

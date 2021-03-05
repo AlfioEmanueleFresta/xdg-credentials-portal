@@ -1,3 +1,4 @@
+mod manager;
 mod protocol;
 
 pub mod apdu;
@@ -8,3 +9,5 @@ pub use self::protocol::Ctap1Version;
 pub use self::protocol::{Ctap1RegisterRequest, Ctap1RegisterResponse};
 pub use self::protocol::{Ctap1SignRequest, Ctap1SignResponse};
 pub use self::protocol::{Ctap1VersionRequest, Ctap1VersionResponse};
+
+pub use self::manager::{Ctap1, Ctap1Manager};

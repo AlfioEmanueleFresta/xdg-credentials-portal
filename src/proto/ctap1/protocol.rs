@@ -135,7 +135,7 @@ impl Ctap1RegisterResponse {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ctap1SignRequest {
     pub app_id: String,
     pub challenge: Vec<u8>,
@@ -217,7 +217,7 @@ impl TryFrom<ApduResponse> for Ctap1VersionResponse {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ctap1SignResponse {
     pub user_presence_verified: bool,
     pub signature: Vec<u8>,

@@ -2,6 +2,8 @@ pub mod fido;
 pub mod ops;
 pub mod proto;
 pub mod transport;
+pub mod u2f;
+pub mod webauthn;
 
 #[macro_use]
 extern crate num_derive;
