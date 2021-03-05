@@ -76,7 +76,7 @@ impl TryFrom<&Ctap2MakeCredentialRequest> for Ctap1RegisterRequest {
                 })
                 .collect(),
             require_user_presence: ctap2.options.is_some()
-                && ctap2.options.unwrap().up.unwrap_or(false),
+                && ctap2.options.unwrap().require_user_presence,
             check_only: false,
             timeout: Duration::from_secs(2),
         })

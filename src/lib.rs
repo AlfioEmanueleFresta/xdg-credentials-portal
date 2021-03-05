@@ -1,5 +1,6 @@
 pub mod fido;
 pub mod ops;
+pub mod pin;
 pub mod proto;
 pub mod transport;
 pub mod u2f;

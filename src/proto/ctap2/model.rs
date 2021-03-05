@@ -1,9 +1,11 @@
+extern crate cosey;
 extern crate num_enum;
 extern crate serde;
 extern crate serde_cbor;
 extern crate serde_indexed;
 extern crate serde_repr;
 
+use cosey::{P256PublicKey, PublicKey};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use serde_bytes::ByteBuf;
 use serde_derive::{Deserialize, Serialize};
@@ -100,14 +102,27 @@ pub struct Ctap2CredentialType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Ctap2MakeCredentialOptions {
+    #[serde(rename = "rk")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rk: Option<bool>,
+    pub require_resident_key: Option<bool>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub up: Option<bool>,
+    #[serde(rename = "up")]
+    #[serde(skip_serializing_if = "Ctap2MakeCredentialOptions::skip_serializing_up")]
+    pub require_user_presence: bool,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub uv: Option<bool>,
+    #[serde(rename = "uv")]
+    #[serde(skip_serializing_if = "Ctap2MakeCredentialOptions::skip_serializing_uv")]
+    pub deprecated_require_user_verification: bool,
+}
+
+impl Ctap2MakeCredentialOptions {
+    fn skip_serializing_up(up: &bool) -> bool {
+        !up // false is not a valid value
+    }
+
+    fn skip_serializing_uv(uv: &bool) -> bool {
+        !uv
+    }
 }
 
 pub type Ctap2AttestationStatement = Option<Ctap2AttestationStatementSome>;
@@ -175,21 +190,13 @@ impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
                 Some(op.extensions_cbor.clone())
             },
             options: Some(Ctap2MakeCredentialOptions {
-                rk: if op.require_resident_key {
+                require_resident_key: if op.require_resident_key {
                     Some(true)
                 } else {
                     None
                 },
-                up: if op.require_user_presence {
-                    Some(true)
-                } else {
-                    None
-                },
-                uv: if op.require_user_verification {
-                    Some(true)
-                } else {
-                    None
-                },
+                require_user_presence: op.require_user_presence,
+                deprecated_require_user_verification: false,
             }),
             pin_auth_param: None,
             pin_auth_proto: None,
@@ -318,4 +325,103 @@ pub struct Ctap2GetInfoResponse {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vendor_proto_config_cmds: Option<Vec<u32>>,
+}
+
+impl Ctap2GetInfoResponse {
+    pub fn option_enabled(&self, name: &str) -> bool {
+        if self.options.is_none() {
+            return false;
+        }
+        let options = self.options.as_ref().unwrap();
+        options.get(name) == Some(&true)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, SerializeIndexed)]
+#[serde_indexed(offset = 1)]
+pub struct Ctap2ClientPinRequest {
+    ///pinUvAuthProtocol (0x01)
+    pub protocol: Ctap2PinUvAuthProtocol,
+
+    /// subCommand (0x02)
+    pub command: Ctap2PinUvAuthProtocolCommand,
+
+    /// keyAgreement (0x03)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_agreement: Option<P256PublicKey>,
+
+    /// pinUvAuthParam (0x04):
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uv_auth_param: Option<ByteBuf>,
+
+    /// newPinEnc (0x05)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_pin_encrypted: Option<ByteBuf>,
+
+    /// pinHashEnc (0x06)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pin_hash_encrypted: Option<ByteBuf>,
+
+    /// permissions (0x09)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<u32>,
+
+    /// permissions RPID (0x10)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions_rpid: Option<String>,
+}
+
+bitflags! {
+    pub struct ClientPinRequestPermissions: u32 {
+        const MAKE_CREDENTIAL = 0x01;
+        const GET_ASSERTION = 0x02;
+        const CREDENTIAL_MANAGEMENT = 0x04;
+        const BIO_ENROLLMENT = 0x08;
+        const LARGE_BLOB_WRITE = 0x10;
+        const AUTHENTICATOR_CONFIGURATION = 0x20;
+    }
+}
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Serialize_repr, Deserialize_repr)]
+pub enum Ctap2PinUvAuthProtocol {
+    One = 1,
+    Two = 2,
+}
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Serialize_repr, Deserialize_repr)]
+pub enum Ctap2PinUvAuthProtocolCommand {
+    GetPinRetries = 0x01,
+    GetKeyAgreement = 0x02,
+    SetPin = 0x03,
+    ChangePin = 0x04,
+    GetPinToken = 0x05,
+    GetPinUvAuthTokenUsingUvWithPermissinos = 0x06,
+    GetUvRetries = 0x07,
+    GetPinUvAuthTokenUsingPinWithPermissions = 0x09,
+}
+
+#[derive(Debug, Clone, PartialEq, SerializeIndexed)]
+#[serde_indexed(offset = 1)]
+pub struct Ctap2ClientPinResponse {
+    /// keyAgreement (0x01)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_agreement: Option<P256PublicKey>,
+
+    /// pinUvAuthToken (0x02):
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uv_auth_param: Option<ByteBuf>,
+
+    /// pinRetries (0x03):
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pin_retries: Option<u32>,
+
+    /// pinRetries (0x04):
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_cycle_state: Option<bool>,
+
+    /// uvRetries (0x05)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uv_retries: Option<u32>,
 }

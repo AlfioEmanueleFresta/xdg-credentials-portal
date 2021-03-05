@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::pin::PinProvider;
 use crate::proto::ctap2::{
     Ctap2CredentialType, Ctap2MakeCredentialResponse, Ctap2PublicKeyCredentialDescriptor,
     Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialUserEntity,

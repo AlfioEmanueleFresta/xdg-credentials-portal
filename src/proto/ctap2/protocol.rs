@@ -9,16 +9,19 @@ use serde_cbor::from_slice;
 use std::{marker::PhantomData, time::Duration};
 
 use crate::proto::ctap2::cbor::CborRequest;
-use crate::proto::ctap2::{Ctap2CommandCode, Ctap2GetInfoResponse};
+use crate::proto::ctap2::Ctap2CommandCode;
 use crate::transport::{device::FidoDevice, error::Error};
 
 use super::{
-    Ctap2GetAssertionRequest, Ctap2GetAssertionResponse, Ctap2MakeCredentialRequest,
-    Ctap2MakeCredentialResponse,
+    Ctap2GetAssertionRequest, Ctap2GetAssertionResponse, Ctap2GetInfoResponse,
+    Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse,
 };
+
+const TIMEOUT_GET_INFO: Duration = Duration::from_millis(250);
 
 #[async_trait]
 pub trait Ctap2<T> {
+    async fn get_info(device: &mut T) -> Result<Ctap2GetInfoResponse, Error>;
     async fn make_credential(
         device: &mut T,
         request: &Ctap2MakeCredentialRequest,
@@ -40,20 +43,25 @@ impl<T> Ctap2<T> for Ctap2Protocol<T>
 where
     T: FidoDevice + Send,
 {
+    async fn get_info(device: &mut T) -> Result<Ctap2GetInfoResponse, Error> {
+        let cbor_request: CborRequest = CborRequest {
+            command: Ctap2CommandCode::AuthenticatorGetInfo,
+            encoded_data: vec![],
+        };
+        let cbor_response = device
+            .send_cbor_request(&cbor_request, TIMEOUT_GET_INFO)
+            .await?;
+        let ctap_response: Ctap2GetInfoResponse = from_slice(&cbor_response.data.unwrap()).unwrap();
+        info!("CTAP2 GetInfo response: {:?}", ctap_response);
+        Ok(ctap_response)
+    }
+
     async fn make_credential(
         device: &mut T,
         request: &Ctap2MakeCredentialRequest,
         timeout: Duration,
     ) -> Result<Ctap2MakeCredentialResponse, Error> {
-        debug!("CTAP2 makeCredential request: {:?}", request);
-
-        let cbor_request: CborRequest = CborRequest {
-            command: Ctap2CommandCode::AuthenticatorGetInfo,
-            encoded_data: vec![],
-        };
-        let cbor_response = device.send_cbor_request(&cbor_request, timeout).await?;
-        let ctap_response: Ctap2GetInfoResponse = from_slice(&cbor_response.data.unwrap()).unwrap();
-        info!("GetInfo: {:?}", ctap_response);
+        debug!("CTAP2 MakeCredential request: {:?}", request);
 
         let _cbor_request: CborRequest = request.into();
         let _cbor_response = device.send_cbor_request(&request.into(), timeout).await?;

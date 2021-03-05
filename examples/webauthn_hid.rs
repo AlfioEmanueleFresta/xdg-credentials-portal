@@ -2,6 +2,7 @@ extern crate base64_url;
 extern crate log;
 
 use backend::ops::webauthn::MakeCredentialRequest;
+use backend::pin::StaticPinProvider;
 use backend::proto::ctap2::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialRpEntity,
     Ctap2PublicKeyCredentialType, Ctap2PublicKeyCredentialUserEntity,
@@ -51,7 +52,10 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
             timeout: TIMEOUT,
         };
 
-        let response = WebAuthnManager::make_credential(&mut device, &make_credentials_request)
+        let pin_provider = StaticPinProvider::new("12312");
+        let manager = WebAuthnManager::new(&pin_provider);
+        let response = manager
+            .make_credential(&mut device, &make_credentials_request)
             .await
             .unwrap();
         info!("WebAuthn MakeCredential response: {:?}", response);
