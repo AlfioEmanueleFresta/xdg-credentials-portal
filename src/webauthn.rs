@@ -112,8 +112,8 @@ where
         let mut ctap2_request: Ctap2MakeCredentialRequest = op.into();
 
         let get_info = Ctap2Protocol::get_info(device).await?;
-        self.make_credential_pin_auth(device, &mut ctap2_request, &get_info)
-            .await?;
+        //self.make_credential_pin_auth(device, &mut ctap2_request, &get_info)
+        //    .await?;
 
         Ctap2Protocol::make_credential(device, &ctap2_request, op.timeout).await
     }
@@ -158,7 +158,7 @@ where
             } else {
                 // !pinUvAuthToken
                 assert!(get_info_response.option_enabled("clientPin"));
-                let token = self.get_pin_token(device).await?;
+                let _token = self.get_pin_token(device).await?;
                 // TODO sesett pinUvAuthToken
                 Ok(())
             }
@@ -166,6 +166,7 @@ where
     }
 
     async fn get_pin_token(&self, device: &mut T) -> Result<PinUvAuthToken, Error> {
+        let _pin = self.pin_provider.provide_pin(None).await;
         todo!()
     }
 
