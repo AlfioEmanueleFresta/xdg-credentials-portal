@@ -125,14 +125,54 @@ impl Ctap2MakeCredentialOptions {
     }
 }
 
-pub type Ctap2AttestationStatement = Option<Ctap2AttestationStatementSome>;
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PackedAttestationStmt {
+    #[serde(rename = "alg")]
+    pub algorithm: Ctap2COSEAlgorithmIdentifier,
 
-#[derive(Debug)]
-pub enum Ctap2AttestationStatementSome {
-    Packed(Vec<u8>),
-    TPM(Vec<u8>),
-    AndroidKey(Vec<u8>),
-    FidoU2F(Vec<u8>),
+    #[serde(rename = "sig")]
+    pub signature: ByteBuf,
+
+    #[serde(rename = "x5c")]
+    pub certificates: Vec<ByteBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FidoU2fAttestationStmt {
+    #[serde(rename = "alg")]
+    pub algorithm: Ctap2COSEAlgorithmIdentifier,
+
+    #[serde(rename = "sig")]
+    pub signature: ByteBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TpmAttestationStmt {
+    #[serde(rename = "ver")]
+    pub version: String,
+
+    #[serde(rename = "alg")]
+    pub algorithm: Ctap2COSEAlgorithmIdentifier,
+
+    #[serde(rename = "sig")]
+    pub signature: ByteBuf,
+
+    #[serde(rename = "x5c")]
+    pub certificates: Vec<ByteBuf>,
+
+    #[serde(rename = "certInfo")]
+    pub certificate_info: ByteBuf,
+
+    #[serde(rename = "pubArea")]
+    pub public_area: ByteBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum Ctap2AttestationStatement {
+    PackedOrAndroid(PackedAttestationStmt),
+    Tpm(TpmAttestationStmt),
+    FidoU2F(FidoU2fAttestationStmt),
 }
 
 // https://www.w3.org/TR/webauthn/#authenticatormakecredential
@@ -205,9 +245,11 @@ impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, DeserializeIndexed)]
+#[serde_indexed(offset = 1)]
 pub struct Ctap2MakeCredentialResponse {
-    pub authenticator_data: Vec<u8>,
+    pub format: String,
+    pub authenticator_data: ByteBuf,
     pub attestation_statement: Ctap2AttestationStatement,
 }
 

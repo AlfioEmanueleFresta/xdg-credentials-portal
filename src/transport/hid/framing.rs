@@ -1,7 +1,9 @@
 extern crate byteorder;
+extern crate log;
 extern crate num_enum;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use log::error;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::convert::TryInto;
@@ -22,6 +24,7 @@ pub enum HidCommand {
     Wink = 0x08,
     Cbor = 0x10,
     Sync = 0x3C,
+    KeepAlive = 0x3B,
     Error = 0x3F,
 }
 

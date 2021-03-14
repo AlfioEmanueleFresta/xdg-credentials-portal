@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use byteorder::{BigEndian, ReadBytesExt};
 use hidapi::DeviceInfo;
 use hidapi::HidApi;
+use hidapi::HidDevice;
 use log::{debug, warn};
 
 use rand::{thread_rng, Rng};
@@ -186,6 +187,25 @@ impl HidFidoDevice {
             hidapi_device.write(&report).unwrap();
         }
 
+        let response = loop {
+            let response = self.hid_receive(&hidapi_device, timeout)?;
+            match response.cmd {
+                HidCommand::KeepAlive => {
+                    debug!("HID keep-alive received. Ignoring: {:?}", response);
+                    continue;
+                }
+                _ => break response,
+            }
+        };
+        debug!("U2F HID response from {:}: {:?}", self, response);
+        Ok(response)
+    }
+
+    fn hid_receive(
+        &self,
+        hidapi_device: &HidDevice,
+        timeout: Duration,
+    ) -> Result<HidMessage, Error> {
         let mut parser = HidMessageParser::new();
         loop {
             let mut report = [0; PACKET_SIZE];
@@ -204,7 +224,6 @@ impl HidFidoDevice {
         let response = parser
             .message()
             .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
-        debug!("U2F HID response from {:}: {:?}", self, response);
         Ok(response)
     }
 }

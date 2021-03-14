@@ -2,6 +2,7 @@ extern crate async_trait;
 extern crate log;
 extern crate serde;
 extern crate serde_cbor;
+extern crate tokio;
 
 use async_trait::async_trait;
 use log::{debug, info};
@@ -10,7 +11,8 @@ use std::{marker::PhantomData, time::Duration};
 
 use crate::proto::ctap2::cbor::CborRequest;
 use crate::proto::ctap2::Ctap2CommandCode;
-use crate::transport::{device::FidoDevice, error::Error};
+use crate::transport::device::FidoDevice;
+use crate::transport::error::{Error, TransportError};
 
 use super::{
     Ctap2GetAssertionRequest, Ctap2GetAssertionResponse, Ctap2GetInfoResponse,
@@ -63,10 +65,13 @@ where
     ) -> Result<Ctap2MakeCredentialResponse, Error> {
         debug!("CTAP2 MakeCredential request: {:?}", request);
 
-        let _cbor_request: CborRequest = request.into();
-        let _cbor_response = device.send_cbor_request(&request.into(), timeout).await?;
+        let cbor_request: CborRequest = request.into();
+        let cbor_response = device.send_cbor_request(&cbor_request, timeout).await?;
 
-        unimplemented!()
+        let ctap_response: Ctap2MakeCredentialResponse =
+            from_slice(&cbor_response.data.unwrap()).unwrap();
+        info!("CTAP2 MakeCredential response: {:?}", ctap_response);
+        Ok(ctap_response)
     }
 
     async fn get_assertion(
