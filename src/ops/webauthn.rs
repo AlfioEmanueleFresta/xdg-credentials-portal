@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use crate::pin::PinProvider;
 use crate::proto::ctap2::{
     Ctap2CredentialType, Ctap2MakeCredentialResponse, Ctap2PublicKeyCredentialDescriptor,
     Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialUserEntity,
@@ -11,7 +10,7 @@ use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2GetAssertionResponse};
 
 pub type MakeCredentialResponse = Ctap2MakeCredentialResponse;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct MakeCredentialRequest {
     pub hash: Vec<u8>,
     pub origin: String,

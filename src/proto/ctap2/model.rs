@@ -5,7 +5,7 @@ extern crate serde_cbor;
 extern crate serde_indexed;
 extern crate serde_repr;
 
-use cosey::{P256PublicKey, PublicKey};
+use cosey::P256PublicKey;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use serde_bytes::ByteBuf;
 use serde_derive::{Deserialize, Serialize};
@@ -74,7 +74,7 @@ pub enum Ctap2Transport {
     INTERNAL,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ctap2PublicKeyCredentialDescriptor {
     pub r#type: Ctap2PublicKeyCredentialType,
     pub id: ByteBuf,
@@ -91,7 +91,7 @@ pub enum Ctap2COSEAlgorithmIdentifier {
     TOPT = -9,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Ctap2CredentialType {
     #[serde(rename = "type")]
     pub public_key_type: Ctap2PublicKeyCredentialType,
@@ -100,7 +100,7 @@ pub struct Ctap2CredentialType {
     pub algorithm: Ctap2COSEAlgorithmIdentifier,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct Ctap2MakeCredentialOptions {
     #[serde(rename = "rk")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -125,7 +125,7 @@ impl Ctap2MakeCredentialOptions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PackedAttestationStmt {
     #[serde(rename = "alg")]
     pub algorithm: Ctap2COSEAlgorithmIdentifier,
@@ -137,7 +137,7 @@ pub struct PackedAttestationStmt {
     pub certificates: Vec<ByteBuf>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FidoU2fAttestationStmt {
     #[serde(rename = "alg")]
     pub algorithm: Ctap2COSEAlgorithmIdentifier,
@@ -146,7 +146,7 @@ pub struct FidoU2fAttestationStmt {
     pub signature: ByteBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct TpmAttestationStmt {
     #[serde(rename = "ver")]
     pub version: String,
@@ -167,7 +167,7 @@ pub struct TpmAttestationStmt {
     pub public_area: ByteBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Ctap2AttestationStatement {
     PackedOrAndroid(PackedAttestationStmt),
@@ -176,7 +176,7 @@ pub enum Ctap2AttestationStatement {
 }
 
 // https://www.w3.org/TR/webauthn/#authenticatormakecredential
-#[derive(Debug, Clone, PartialEq, SerializeIndexed, DeserializeIndexed)]
+#[derive(Debug, Clone, SerializeIndexed)]
 #[serde_indexed(offset = 1)]
 pub struct Ctap2MakeCredentialRequest {
     /// clientDataHash (0x01)
@@ -245,7 +245,7 @@ impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, DeserializeIndexed)]
+#[derive(Debug, Clone, DeserializeIndexed)]
 #[serde_indexed(offset = 1)]
 pub struct Ctap2MakeCredentialResponse {
     pub format: String,
@@ -273,7 +273,7 @@ pub struct Ctap2GetAssertionResponse {
     pub user_id: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Clone, PartialEq, SerializeIndexed, DeserializeIndexed)]
+#[derive(Debug, Clone, DeserializeIndexed)]
 #[serde_indexed(offset = 1)]
 pub struct Ctap2GetInfoResponse {
     /// versions (0x01)
@@ -379,7 +379,7 @@ impl Ctap2GetInfoResponse {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, SerializeIndexed)]
+#[derive(Debug, Clone, SerializeIndexed)]
 #[serde_indexed(offset = 1)]
 pub struct Ctap2ClientPinRequest {
     ///pinUvAuthProtocol (0x01)
@@ -425,14 +425,14 @@ bitflags! {
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Clone, FromPrimitive, PartialEq, Serialize_repr, Deserialize_repr)]
 pub enum Ctap2PinUvAuthProtocol {
     One = 1,
     Two = 2,
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Clone, FromPrimitive, PartialEq, Serialize_repr, Deserialize_repr)]
 pub enum Ctap2PinUvAuthProtocolCommand {
     GetPinRetries = 0x01,
     GetKeyAgreement = 0x02,
@@ -444,7 +444,7 @@ pub enum Ctap2PinUvAuthProtocolCommand {
     GetPinUvAuthTokenUsingPinWithPermissions = 0x09,
 }
 
-#[derive(Debug, Clone, PartialEq, SerializeIndexed)]
+#[derive(Debug, Clone, DeserializeIndexed)]
 #[serde_indexed(offset = 1)]
 pub struct Ctap2ClientPinResponse {
     /// keyAgreement (0x01)

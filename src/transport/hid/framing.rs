@@ -3,7 +3,6 @@ extern crate log;
 extern crate num_enum;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use log::error;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::convert::TryInto;

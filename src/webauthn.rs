@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use log::{debug, info, warn};
 use std::convert::TryInto;
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use crate::ops::webauthn::{MakeCredentialRequest, MakeCredentialResponse};
 use crate::pin::PinProvider;
@@ -109,9 +108,9 @@ where
         device: &mut T,
         op: &MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
-        let mut ctap2_request: Ctap2MakeCredentialRequest = op.into();
+        let ctap2_request: Ctap2MakeCredentialRequest = op.into();
 
-        let get_info = Ctap2Protocol::get_info(device).await?;
+        let _get_info = Ctap2Protocol::get_info(device).await?;
         //self.make_credential_pin_auth(device, &mut ctap2_request, &get_info)
         //    .await?;
 
@@ -133,9 +132,9 @@ where
             .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
     }
 
-    async fn make_credential_pin_auth(
+    async fn _make_credential_pin_auth(
         &self,
-        device: &mut T,
+        _device: &mut T,
         request: &mut Ctap2MakeCredentialRequest,
         get_info_response: &Ctap2GetInfoResponse,
     ) -> Result<(), Error> {
@@ -158,14 +157,14 @@ where
             } else {
                 // !pinUvAuthToken
                 assert!(get_info_response.option_enabled("clientPin"));
-                let _token = self.get_pin_token(device).await?;
+                //let _token = self.get_pin_token(device).await?;
                 // TODO sesett pinUvAuthToken
                 Ok(())
             }
         }
     }
 
-    async fn get_pin_token(&self, device: &mut T) -> Result<PinUvAuthToken, Error> {
+    async fn _get_pin_token(&self, _device: &mut T) -> Result<PinUvAuthToken, Error> {
         let _pin = self.pin_provider.provide_pin(None).await;
         todo!()
     }

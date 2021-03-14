@@ -12,7 +12,7 @@ use std::{marker::PhantomData, time::Duration};
 use crate::proto::ctap2::cbor::CborRequest;
 use crate::proto::ctap2::Ctap2CommandCode;
 use crate::transport::device::FidoDevice;
-use crate::transport::error::{Error, TransportError};
+use crate::transport::error::Error;
 
 use super::{
     Ctap2GetAssertionRequest, Ctap2GetAssertionResponse, Ctap2GetInfoResponse,

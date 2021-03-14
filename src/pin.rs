@@ -10,8 +10,8 @@ pub struct PinUvAuthToken {
     pub user_present: bool,
 }
 
-impl PinUvAuthToken {
-    fn new() -> Self {
+impl Default for PinUvAuthToken {
+    fn default() -> Self {
         Self {
             rpid: None,
             user_verified: false,
