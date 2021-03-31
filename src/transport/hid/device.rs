@@ -163,13 +163,41 @@ impl HidFidoDevice {
         Ok(())
     }
 
+    fn hid_cancel(&self, cid: u32, hidapi_device: &HidDevice) -> Result<(), Error> {
+        self.hid_send(
+            &HidMessage::new(cid, HidCommand::Cancel, &[]),
+            &hidapi_device,
+        )
+    }
+
     async fn hid_transact(&self, msg: &HidMessage, timeout: Duration) -> Result<HidMessage, Error> {
+        let hidapi_device = self.hid_open()?;
+
+        self.hid_cancel(msg.cid, &hidapi_device)?;
+        self.hid_send(msg, &hidapi_device)?;
+
+        let response = loop {
+            let response = self.hid_receive(&hidapi_device, timeout)?;
+            match response.cmd {
+                HidCommand::KeepAlive => {
+                    debug!("HID keep-alive received. Ignoring: {:?}", response);
+                    continue;
+                }
+                _ => break response,
+            }
+        };
+        Ok(response)
+    }
+
+    fn hid_open(&self) -> Result<HidDevice, Error> {
         let hidapi = get_hidapi()?;
-        let hidapi_device = self
+        Ok(self
             .hidapi_device
             .open_device(&hidapi)
-            .or(Err(Error::Transport(TransportError::ConnectionFailed)))?;
+            .or(Err(Error::Transport(TransportError::ConnectionFailed)))?)
+    }
 
+    fn hid_send(&self, msg: &HidMessage, hidapi_device: &HidDevice) -> Result<(), Error> {
         debug!("U2F HID request to {:}: {:?}", self, msg);
         let packets = msg
             .packets(PACKET_SIZE)
@@ -187,18 +215,7 @@ impl HidFidoDevice {
             hidapi_device.write(&report).unwrap();
         }
 
-        let response = loop {
-            let response = self.hid_receive(&hidapi_device, timeout)?;
-            match response.cmd {
-                HidCommand::KeepAlive => {
-                    debug!("HID keep-alive received. Ignoring: {:?}", response);
-                    continue;
-                }
-                _ => break response,
-            }
-        };
-        debug!("U2F HID response from {:}: {:?}", self, response);
-        Ok(response)
+        Ok(())
     }
 
     fn hid_receive(
@@ -224,6 +241,7 @@ impl HidFidoDevice {
         let response = parser
             .message()
             .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
+        debug!("U2F HID response from {:}: {:?}", self, response);
         Ok(response)
     }
 }

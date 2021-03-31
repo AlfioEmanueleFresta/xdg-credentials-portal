@@ -22,6 +22,7 @@ pub enum HidCommand {
     Init = 0x06,
     Wink = 0x08,
     Cbor = 0x10,
+    Cancel = 0x11,
     Sync = 0x3C,
     KeepAlive = 0x3B,
     Error = 0x3F,
