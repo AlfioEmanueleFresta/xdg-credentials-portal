@@ -3,6 +3,7 @@ extern crate serde_cbor;
 use serde_cbor::ser::to_vec;
 
 use crate::proto::ctap2::model::Ctap2CommandCode;
+use crate::proto::ctap2::model::Ctap2GetAssertionRequest;
 use crate::proto::ctap2::model::Ctap2MakeCredentialRequest;
 
 #[derive(Debug)]
@@ -12,6 +13,13 @@ pub struct CborRequest {
 }
 
 impl CborRequest {
+    pub fn new(command: Ctap2CommandCode) -> Self {
+        Self {
+            command: command,
+            encoded_data: vec![],
+        }
+    }
+
     pub fn ctap_hid_data(&self) -> Vec<u8> {
         let mut data = vec![self.command as u8];
         data.extend(&self.encoded_data);
@@ -23,6 +31,15 @@ impl From<&Ctap2MakeCredentialRequest> for CborRequest {
     fn from(request: &Ctap2MakeCredentialRequest) -> CborRequest {
         CborRequest {
             command: Ctap2CommandCode::AuthenticatorMakeCredential,
+            encoded_data: to_vec(request).unwrap(),
+        }
+    }
+}
+
+impl From<&Ctap2GetAssertionRequest> for CborRequest {
+    fn from(request: &Ctap2GetAssertionRequest) -> CborRequest {
+        CborRequest {
+            command: Ctap2CommandCode::AuthenticatorGetAssertion,
             encoded_data: to_vec(request).unwrap(),
         }
     }

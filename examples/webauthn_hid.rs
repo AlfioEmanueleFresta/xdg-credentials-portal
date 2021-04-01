@@ -1,16 +1,18 @@
 extern crate base64_url;
 extern crate log;
 
-use backend::ops::webauthn::MakeCredentialRequest;
+use backend::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
 use backend::pin::StaticPinProvider;
 use backend::proto::ctap2::{
-    Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialRpEntity,
-    Ctap2PublicKeyCredentialType, Ctap2PublicKeyCredentialUserEntity,
+    Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialDescriptor,
+    Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialType,
+    Ctap2PublicKeyCredentialUserEntity,
 };
 use backend::transport::hid::list_devices;
 use backend::webauthn::{WebAuthn, WebAuthnManager};
 
 use log::info;
+use std::convert::TryInto;
 use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -24,6 +26,9 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Found devices: {:?}", devices);
 
     let challenge = base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
+
+    let pin_provider = StaticPinProvider::new("12312");
+    let manager = WebAuthnManager::new(&pin_provider);
 
     // Selecting a device
     for mut device in devices {
@@ -41,7 +46,6 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Mario Rossi",
             ),
             require_resident_key: false,
-            require_user_presence: false,
             require_user_verification: false,
             algorithms: vec![Ctap2CredentialType {
                 public_key_type: Ctap2PublicKeyCredentialType::PublicKey,
@@ -52,17 +56,27 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
             timeout: TIMEOUT,
         };
 
-        let pin_provider = StaticPinProvider::new("12312");
-        let manager = WebAuthnManager::new(&pin_provider);
         let response = manager
             .make_credential(&mut device, &make_credentials_request)
             .await
             .unwrap();
         info!("WebAuthn MakeCredential response: {:?}", response);
 
-        // Get Assertion ceremony
-
-        // TODO
+        let credential: Ctap2PublicKeyCredentialDescriptor = (&response).try_into().unwrap();
+        let get_assertion = GetAssertionRequest {
+            relying_party_id: "example.org".to_owned(),
+            hash: challenge.to_owned(),
+            allow: vec![credential],
+            require_user_presence: false,
+            require_user_verification: false,
+            extensions_cbor: None,
+            timeout: TIMEOUT,
+        };
+        let response = manager
+            .get_assertion(&mut device, &get_assertion)
+            .await
+            .unwrap();
+        info!("WebAuthn GetAssertion response: {:?}", response);
     }
 
     Ok(())

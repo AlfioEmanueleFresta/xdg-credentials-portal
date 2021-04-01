@@ -11,6 +11,7 @@ use hidapi::DeviceInfo;
 use hidapi::HidApi;
 use hidapi::HidDevice;
 use log::{debug, warn};
+use tokio::time::sleep;
 
 use rand::{thread_rng, Rng};
 use std::fmt;
@@ -31,6 +32,10 @@ use crate::transport::error::{Error, TransportError};
 const INIT_NONCE_LEN: usize = 8;
 const INIT_PAYLOAD_LEN: usize = 17;
 const INIT_TIMEOUT: Duration = Duration::from_millis(200);
+
+// Some devices fail when sending a WINK command followed immediately
+// by a CBOR command, so we want to ensure we wait some time after winking.
+const WINK_MIN_WAIT: Duration = Duration::from_secs(2);
 
 const PACKET_SIZE: usize = 64;
 const REPORT_ID: u8 = 0x00;
@@ -114,6 +119,8 @@ impl HidFidoDevice {
             timeout,
         )
         .await?;
+
+        sleep(WINK_MIN_WAIT).await;
         Ok(true)
     }
 

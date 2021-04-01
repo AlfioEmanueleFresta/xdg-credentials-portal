@@ -75,8 +75,7 @@ impl TryFrom<&Ctap2MakeCredentialRequest> for Ctap1RegisterRequest {
                     app_id: Some(ctap2.relying_party.id.clone()),
                 })
                 .collect(),
-            require_user_presence: ctap2.options.is_some()
-                && ctap2.options.unwrap().require_user_presence,
+            require_user_presence: true,
             check_only: false,
             timeout: Duration::from_secs(2),
         })
