@@ -22,7 +22,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Devices enumeration
-    let devices = list_devices().await?;
+    let devices = list_devices(true).await?;
     println!("Found devices: {:?}", devices);
 
     let challenge = base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
