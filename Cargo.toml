@@ -14,6 +14,7 @@ name = "portal"
 path = "src/main.rs"
 
 [dependencies]
+async-std = "1.9.0"
 authenticator = "0.2.12"
 base64-url = "1.1.14"
 dbus = "0.8.3"

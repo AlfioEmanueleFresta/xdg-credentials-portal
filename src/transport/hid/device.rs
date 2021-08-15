@@ -1,3 +1,4 @@
+extern crate async_std;
 extern crate async_trait;
 extern crate bitflags;
 extern crate hidapi;
@@ -5,6 +6,7 @@ extern crate log;
 extern crate rand;
 extern crate tokio;
 
+use async_std::net::UdpSocket;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ReadBytesExt};
 use hidapi::DeviceInfo;
@@ -42,8 +44,14 @@ const REPORT_ID: u8 = 0x00;
 
 #[derive(Debug, Clone)]
 pub struct HidFidoDevice {
-    hidapi_device: DeviceInfo,
+    device: HidBackendDevice,
     init: Option<InitResponse>,
+}
+
+#[derive(Debug, Clone)]
+enum HidBackendDevice {
+    HidApiDevice(DeviceInfo),
+    VirtualDevice
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -67,27 +75,27 @@ bitflags! {
 impl From<&DeviceInfo> for HidFidoDevice {
     fn from(hidapi_device: &DeviceInfo) -> Self {
         Self {
-            hidapi_device: hidapi_device.clone(),
+            device: HidBackendDevice::HidApiDevice(hidapi_device.clone()),
             init: None,
         }
     }
 }
 
-impl Into<DeviceInfo> for &HidFidoDevice {
-    fn into(self) -> DeviceInfo {
-        self.hidapi_device.clone()
-    }
-}
-
 impl fmt::Display for HidFidoDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:} {:} (r{:?})",
-            self.hidapi_device.manufacturer_string().unwrap(),
-            self.hidapi_device.product_string().unwrap(),
-            self.hidapi_device.release_number()
-        )
+        match &self.device {
+            HidBackendDevice::HidApiDevice(dev) =>write!(
+                f,
+                "{:} {:} (r{:?})",
+                dev.manufacturer_string().unwrap(),
+                dev.product_string().unwrap(),
+                dev.release_number()
+            ),
+            HidBackendDevice::VirtualDevice => write!(
+                f,
+                "Virtual device" // TBC details
+            ),
+        }
     }
 }
 
@@ -95,17 +103,28 @@ fn get_hidapi() -> Result<HidApi, Error> {
     HidApi::new().or(Err(Error::Transport(TransportError::TransportUnavailable)))
 }
 
-pub async fn list_devices() -> Result<Vec<HidFidoDevice>, Error> {
-    Ok(get_hidapi()?
+pub async fn list_devices(include_virtual: bool) -> Result<Vec<HidFidoDevice>, Error> {
+    let mut devices: Vec<HidFidoDevice> = get_hidapi()?
         .device_list()
         .into_iter()
         .filter(|device| device.usage_page() == 0xF1D0)
         .filter(|device| device.usage() == 0x0001)
         .map(|device| device.into())
-        .collect())
+        .collect();
+    if include_virtual {
+        devices.push(HidFidoDevice::new_virtual());
+    }
+    Ok(devices)
 }
 
 impl HidFidoDevice {
+    pub fn new_virtual() -> Self {
+        Self {
+            device: HidBackendDevice::VirtualDevice,
+            init: None
+        }
+    }
+
     pub async fn wink(&mut self, timeout: Duration) -> Result<bool, Error> {
         self.init(timeout).await?;
 
@@ -178,6 +197,57 @@ impl HidFidoDevice {
     }
 
     async fn hid_transact(&self, msg: &HidMessage, timeout: Duration) -> Result<HidMessage, Error> {
+        match self.device {
+            HidBackendDevice::HidApiDevice(_) => self.hid_transact_hidapi(msg, timeout).await,
+            HidBackendDevice::VirtualDevice => self.hid_transact_virtual(msg, timeout).await
+        }
+    }
+
+    async fn hid_transact_virtual(&self, msg: &HidMessage, timeout: Duration) -> Result<HidMessage, Error> {
+        // https://github.com/solokeys/python-fido2/commit/4964d98ca6d0cfc24cd49926521282b8e92c598d
+        let socket = UdpSocket::bind("127.0.0.1:7112").await
+            .or(Err(Error::Transport(TransportError::TransportUnavailable)))?;
+
+        debug!("U2F HID request to UDP virtual device: {:?}", msg);
+        let packets = msg
+            .packets(PACKET_SIZE)
+            .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
+        for packet in packets {
+            let mut report: Vec<u8> = vec![];
+            report.extend(&packet);
+            report.extend(vec![0; PACKET_SIZE - packet.len()]);
+            debug!(
+                "Sending HID report to {:} ({:} bytes): {:?}",
+                self,
+                report.len(),
+                report
+            );
+            socket.send_to(&report, "127.0.0.1:8111").await
+                .or(Err(Error::Transport(TransportError::ConnectionLost)))?;
+        }
+        
+        let mut parser = HidMessageParser::new();
+        loop {
+            let mut report = [0; PACKET_SIZE];
+            socket.recv_from(&mut report).await
+                .or(Err(Error::Transport(TransportError::ConnectionLost)))?;
+            debug!("Received HID report from UDP virtual device: {:?}", report);
+            if let HidMessageParserState::Done = parser
+                .update(&report)
+                .or(Err(Error::Transport(TransportError::InvalidFraming)))?
+            {
+                break;
+            }
+        }
+
+        let response = parser
+            .message()
+            .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
+        debug!("U2F HID response from UDP virtual device: {:?}", response);
+        Ok(response)
+    }
+
+    async fn hid_transact_hidapi(&self, msg: &HidMessage, timeout: Duration) -> Result<HidMessage, Error> {
         let hidapi_device = self.hid_open()?;
 
         self.hid_cancel(msg.cid, &hidapi_device)?;
@@ -189,7 +259,7 @@ impl HidFidoDevice {
                 HidCommand::KeepAlive => {
                     debug!("HID keep-alive received. Ignoring: {:?}", response);
                     continue;
-                }
+                },
                 _ => break response,
             }
         };
@@ -198,10 +268,12 @@ impl HidFidoDevice {
 
     fn hid_open(&self) -> Result<HidDevice, Error> {
         let hidapi = get_hidapi()?;
-        Ok(self
-            .hidapi_device
-            .open_device(&hidapi)
-            .or(Err(Error::Transport(TransportError::ConnectionFailed)))?)
+        match &self.device {
+            HidBackendDevice::HidApiDevice(device) => Ok(device
+                .open_device(&hidapi)
+                .or(Err(Error::Transport(TransportError::ConnectionFailed)))?),
+            HidBackendDevice::VirtualDevice => unimplemented!()
+        }
     }
 
     fn hid_send(&self, msg: &HidMessage, hidapi_device: &HidDevice) -> Result<(), Error> {
