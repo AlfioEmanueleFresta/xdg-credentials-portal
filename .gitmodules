@@ -1,0 +1,3 @@
+[submodule "tst/deps/solo"]
+	path = tst/deps/solo
+	url = https://github.com/AlfioEmanueleFresta/solo.git
