@@ -1,21 +1,25 @@
-name: Rust
-
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+name: Build and run tests
+on: [push]
 
 jobs:
   build:
-
+    env:
+      RUST_LOG: debug
+    name: Build and run tests
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v2
-    - name: Install system dependencies
-      run: sudo apt-get install libudev-dev libdbus-1-dev
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v2
+      - name: Checkout submodules
+        run: git submodule update --init --recursive
+      - name: Install system dependencies
+        run: sudo apt-get install libudev-dev libdbus-1-dev libsodium-dev
+      - name: Build
+        run: cargo build
+      - name: Run tests
+        run: cargo test --verbose
+      - name: Start Solo virtual security key
+        run: cd tst/deps/solo && make && ./main &
+      - name: Run u2f_hid example (virtual key)
+        run: cargo run --example u2f_hid
+      - name: Run webauthn_hid example (virtual key)
+        run: cargo run --example webauthn_hid
