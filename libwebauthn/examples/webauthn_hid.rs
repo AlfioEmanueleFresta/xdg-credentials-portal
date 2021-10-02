@@ -1,4 +1,5 @@
 extern crate base64_url;
+extern crate clap;
 extern crate log;
 
 use backend::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
@@ -8,29 +9,38 @@ use backend::proto::ctap2::{
     Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialType,
     Ctap2PublicKeyCredentialUserEntity,
 };
-use backend::transport::hid::list_devices;
+use backend::transport::hid::{list_devices, HidFidoDevice};
 use backend::webauthn::{WebAuthn, WebAuthnManager};
 
+use clap::{AppSettings, Clap};
 use log::info;
 use std::convert::TryInto;
 use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
+#[derive(Clap)]
+#[clap(version = "1.0", author = "Kevin K. <kbknapp@gmail.com>")]
+#[clap(setting = AppSettings::ColoredHelp)]
+struct Opts {
+    #[clap(short, long)]
+    virtual_key: bool,
+}
+
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
-
-    // Devices enumeration
-    let devices = list_devices(true).await?;
-    println!("Found devices: {:?}", devices);
+    let opts: Opts = Opts::parse();
+    let mut devices = list_devices().await.unwrap();
+    if opts.virtual_key {
+        devices.insert(0, HidFidoDevice::new_virtual());
+    }
+    info!("Devices found: {:?}", devices);
 
     let challenge = base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
-
     let pin_provider = StaticPinProvider::new("12312");
     let manager = WebAuthnManager::new(&pin_provider);
 
-    // Selecting a device
     for mut device in devices {
         println!("Selected HID authenticator: {}", &device);
         device.wink(TIMEOUT).await?;

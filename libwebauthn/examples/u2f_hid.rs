@@ -15,7 +15,7 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
-    let devices = list_devices(true).await?;
+    let devices = list_devices().await?;
 
     info!("Found {} devices.", devices.len());
     for mut device in devices {

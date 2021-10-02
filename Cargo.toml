@@ -1,47 +1,6 @@
-[package]
-name = "xdg-credentials-portal"
-version = "0.1.0"
-authors = ["Alfie Fresta <alfie.fresta@gmail.com>"]
-edition = "2018"
-default-run = "portal"
+[workspace]
 
-[lib]
-name = "backend"
-path = "src/lib.rs"
-
-[[bin]]
-name = "portal"
-path = "src/main.rs"
-
-[dependencies]
-async-std = "1.9.0"
-authenticator = "0.2.12"
-base64-url = "1.1.14"
-dbus = "0.8.3"
-dbus-codegen = "0.5.0"
-env_logger = "0.7.1"
-log = "0.4"
-maplit = "1.0.2"
-sha2 = "0.8.1"
-uuid = { version = "0.8.1", features = ["serde", "v4"] }
-async-trait = "0.1.36"
-futures = "0.3.5"
-tokio = { version = "1.1.1", features = ["full"] }
-serde = "1.0.110"
-serde_cbor = "0.11.1"
-serde-indexed = "0.1.0"
-serde_derive = "1.0.123"
-serde_repr = "0.1.6"
-serde_bytes = "0.11.5"
-num-traits = "0.2"
-num-derive = "0.3"
-byteorder = "1.3.4"
-blurz = "0.4.0"
-num_enum = "0.5.0"
-x509-parser = "0.8.0-beta3"
-hex = "0.4.2"
-mockall = "0.7.1"
-hidapi = { version = "1.2.5", default-features = false, features = ["linux-static-hidraw"] }
-bitflags = "1.2.1"
-rand = "0.8.4"
-cosey = "0.2.0"
+members = [
+    "libwebauthn",
+    "solo",
+]

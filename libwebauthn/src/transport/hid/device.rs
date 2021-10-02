@@ -13,6 +13,7 @@ use hidapi::DeviceInfo;
 use hidapi::HidApi;
 use hidapi::HidDevice;
 use log::{debug, warn};
+use solo::SoloVirtualKey;
 use tokio::time::sleep;
 
 use rand::{thread_rng, Rng};
@@ -42,16 +43,16 @@ const WINK_MIN_WAIT: Duration = Duration::from_secs(2);
 const PACKET_SIZE: usize = 64;
 const REPORT_ID: u8 = 0x00;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct HidFidoDevice {
     device: HidBackendDevice,
     init: Option<InitResponse>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum HidBackendDevice {
     HidApiDevice(DeviceInfo),
-    VirtualDevice,
+    VirtualDevice(SoloVirtualKey),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -91,10 +92,7 @@ impl fmt::Display for HidFidoDevice {
                 dev.product_string().unwrap(),
                 dev.release_number()
             ),
-            HidBackendDevice::VirtualDevice => write!(
-                f,
-                "Virtual device" // TBC details
-            ),
+            HidBackendDevice::VirtualDevice(dev) => write!(f, "Virtual device: {:?}", dev),
         }
     }
 }
@@ -103,24 +101,21 @@ fn get_hidapi() -> Result<HidApi, Error> {
     HidApi::new().or(Err(Error::Transport(TransportError::TransportUnavailable)))
 }
 
-pub async fn list_devices(include_virtual: bool) -> Result<Vec<HidFidoDevice>, Error> {
-    let mut devices: Vec<HidFidoDevice> = get_hidapi()?
+pub async fn list_devices() -> Result<Vec<HidFidoDevice>, Error> {
+    Ok(get_hidapi()?
         .device_list()
         .into_iter()
         .filter(|device| device.usage_page() == 0xF1D0)
         .filter(|device| device.usage() == 0x0001)
         .map(|device| device.into())
-        .collect();
-    if include_virtual {
-        devices.push(HidFidoDevice::new_virtual());
-    }
-    Ok(devices)
+        .collect())
 }
 
 impl HidFidoDevice {
     pub fn new_virtual() -> Self {
+        let solo = SoloVirtualKey::default();
         Self {
-            device: HidBackendDevice::VirtualDevice,
+            device: HidBackendDevice::VirtualDevice(solo),
             init: None,
         }
     }
@@ -199,7 +194,7 @@ impl HidFidoDevice {
     async fn hid_transact(&self, msg: &HidMessage, timeout: Duration) -> Result<HidMessage, Error> {
         match self.device {
             HidBackendDevice::HidApiDevice(_) => self.hid_transact_hidapi(msg, timeout).await,
-            HidBackendDevice::VirtualDevice => self.hid_transact_virtual(msg, timeout).await,
+            HidBackendDevice::VirtualDevice(_) => self.hid_transact_virtual(msg, timeout).await,
         }
     }
 
@@ -294,7 +289,7 @@ impl HidFidoDevice {
             HidBackendDevice::HidApiDevice(device) => Ok(device
                 .open_device(&hidapi)
                 .or(Err(Error::Transport(TransportError::ConnectionFailed)))?),
-            HidBackendDevice::VirtualDevice => unimplemented!(),
+            HidBackendDevice::VirtualDevice(_) => unimplemented!(),
         }
     }
 

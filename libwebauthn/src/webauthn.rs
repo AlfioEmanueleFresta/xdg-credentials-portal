@@ -49,7 +49,7 @@ pub struct WebAuthnManager<'a, T, P: 'a> {
 }
 
 #[async_trait]
-impl<'a, T, P: 'a> WebAuthn<T> for WebAuthnManager<'a, T, P>
+impl<'a, T, P: 'a> WebAuthn<T> for WebAuthnManager<'a, &T, P>
 where
     T: FidoDevice + Send + Sync,
     P: PinProvider + Send + Sync,
