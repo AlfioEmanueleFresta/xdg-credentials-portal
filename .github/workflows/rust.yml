@@ -16,10 +16,8 @@ jobs:
       - name: Build
         run: cargo build
       - name: Run tests
-        run: cargo test --verbose
-      - name: Start Solo virtual security key
-        run: cd tst/deps/solo && make && ./main &
+        run: cargo test --verbose --features hid-device-tests
       - name: Run u2f_hid example (virtual key)
-        run: cargo run --example u2f_hid
+        run: cargo run --example u2f_hid --features virtual-hid-device
       - name: Run webauthn_hid example (virtual key)
-        run: cargo run --example webauthn_hid
+        run: cargo run --example webauthn_hid --features virtual-hid-device

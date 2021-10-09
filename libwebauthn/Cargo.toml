@@ -13,6 +13,11 @@ path = "src/lib.rs"
 name = "portal"
 path = "src/main.rs"
 
+[features]
+default = []
+hid-device-tests = ["virtual-hid-device"]
+virtual-hid-device = ["solo"]
+
 [dependencies]
 async-std = "1.9.0"
 authenticator = "0.2.12"
@@ -45,7 +50,4 @@ hidapi = { version = "1.2.5", default-features = false, features = ["linux-stati
 bitflags = "1.2.1"
 rand = "0.8.4"
 cosey = "0.2.0"
-solo = { path = "../solo" }
-
-[dev-dependencies]
-clap = "3.0.0-beta.4"
+solo = { path = "../solo", optional = true }

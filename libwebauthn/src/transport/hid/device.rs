@@ -6,14 +6,12 @@ extern crate log;
 extern crate rand;
 extern crate tokio;
 
-use async_std::net::UdpSocket;
 use async_trait::async_trait;
 use byteorder::{BigEndian, ReadBytesExt};
 use hidapi::DeviceInfo;
 use hidapi::HidApi;
 use hidapi::HidDevice;
 use log::{debug, warn};
-use solo::SoloVirtualKey;
 use tokio::time::sleep;
 
 use rand::{thread_rng, Rng};
@@ -31,6 +29,11 @@ use super::framing::{HidCommand, HidMessage, HidMessageParser, HidMessageParserS
 
 use crate::transport::device::{FidoDevice, SupportedProtocols};
 use crate::transport::error::{Error, TransportError};
+
+#[cfg(feature = "virtual-hid-device")]
+use async_std::net::UdpSocket;
+#[cfg(feature = "virtual-hid-device")]
+use solo::SoloVirtualKey;
 
 const INIT_NONCE_LEN: usize = 8;
 const INIT_PAYLOAD_LEN: usize = 17;
@@ -52,6 +55,7 @@ pub struct HidFidoDevice {
 #[derive(Debug)]
 enum HidBackendDevice {
     HidApiDevice(DeviceInfo),
+    #[cfg(feature = "virtual-hid-device")]
     VirtualDevice(SoloVirtualKey),
 }
 
@@ -92,6 +96,7 @@ impl fmt::Display for HidFidoDevice {
                 dev.product_string().unwrap(),
                 dev.release_number()
             ),
+            #[cfg(feature = "virtual-hid-device")]
             HidBackendDevice::VirtualDevice(dev) => write!(f, "Virtual device: {:?}", dev),
         }
     }
@@ -101,6 +106,12 @@ fn get_hidapi() -> Result<HidApi, Error> {
     HidApi::new().or(Err(Error::Transport(TransportError::TransportUnavailable)))
 }
 
+#[cfg(feature = "virtual-hid-device")]
+pub async fn list_devices() -> Result<Vec<HidFidoDevice>, Error> {
+    Ok(vec![HidFidoDevice::new_virtual()])
+}
+
+#[cfg(not(feature = "virtual-hid-device"))]
 pub async fn list_devices() -> Result<Vec<HidFidoDevice>, Error> {
     Ok(get_hidapi()?
         .device_list()
@@ -112,6 +123,7 @@ pub async fn list_devices() -> Result<Vec<HidFidoDevice>, Error> {
 }
 
 impl HidFidoDevice {
+    #[cfg(feature = "virtual-hid-device")]
     pub fn new_virtual() -> Self {
         let solo = SoloVirtualKey::default();
         Self {
@@ -194,10 +206,12 @@ impl HidFidoDevice {
     async fn hid_transact(&self, msg: &HidMessage, timeout: Duration) -> Result<HidMessage, Error> {
         match self.device {
             HidBackendDevice::HidApiDevice(_) => self.hid_transact_hidapi(msg, timeout).await,
+            #[cfg(feature = "virtual-hid-device")]
             HidBackendDevice::VirtualDevice(_) => self.hid_transact_virtual(msg, timeout).await,
         }
     }
 
+    #[cfg(feature = "virtual-hid-device")]
     async fn hid_transact_virtual(
         &self,
         msg: &HidMessage,
@@ -289,6 +303,7 @@ impl HidFidoDevice {
             HidBackendDevice::HidApiDevice(device) => Ok(device
                 .open_device(&hidapi)
                 .or(Err(Error::Transport(TransportError::ConnectionFailed)))?),
+            #[cfg(feature = "virtual-hid-device")]
             HidBackendDevice::VirtualDevice(_) => unimplemented!(),
         }
     }
@@ -402,5 +417,20 @@ impl FidoDevice for HidFidoDevice {
 
         debug!("Received CBOR response: {:?}", cbor_response);
         Ok(cbor_response)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "hid-device-tests")]
+    #[tokio::test]
+    async fn test_supported_protocols() {
+        use super::HidFidoDevice;
+        use crate::transport::device::FidoDevice;
+
+        let mut device = HidFidoDevice::new_virtual();
+        let protocols = device.supported_protocols().await.unwrap();
+        assert!(protocols.u2f);
+        assert!(protocols.fido2);
     }
 }
