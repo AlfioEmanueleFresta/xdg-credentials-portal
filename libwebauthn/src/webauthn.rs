@@ -49,7 +49,7 @@ pub struct WebAuthnManager<'a, T, P: 'a> {
 }
 
 #[async_trait]
-impl<'a, T, P: 'a> WebAuthn<T> for WebAuthnManager<'a, &T, P>
+impl<'a, T, P: 'a> WebAuthn<T> for WebAuthnManager<'a, T, P>
 where
     T: FidoDevice + Send + Sync,
     P: PinProvider + Send + Sync,
@@ -88,12 +88,12 @@ where
 
 impl<'a, T, P: 'a> WebAuthnManager<'a, T, P>
 where
-    T: FidoDevice + Send,
-    P: PinProvider + Send + 'a,
+    T: FidoDevice + Send + Sync,
+    P: PinProvider + Send + Sync,
 {
     pub fn new(pin_provider: &'a P) -> Self {
         Self {
-            pin_provider,
+            pin_provider: pin_provider,
             device_type: PhantomData::<T>::default(),
         }
     }
