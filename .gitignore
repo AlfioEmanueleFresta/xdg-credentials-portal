@@ -1,2 +1,6 @@
 */target
 target
+
+# Virtual key state
+solo/resident_keys.bin
+solo/authenticator_state.bin
