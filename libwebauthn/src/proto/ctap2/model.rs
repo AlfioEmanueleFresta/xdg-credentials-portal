@@ -296,7 +296,7 @@ pub struct Ctap2MakeCredentialRequest {
 impl Ctap2MakeCredentialRequest {
     pub fn dummy() -> Self {
         let hasher = Sha256::default();
-        let hash = hasher.result().to_vec();
+        let hash = hasher.finalize().to_vec();
         Self {
             hash: ByteBuf::from(hash),
             relying_party: Ctap2PublicKeyCredentialRpEntity::dummy(),

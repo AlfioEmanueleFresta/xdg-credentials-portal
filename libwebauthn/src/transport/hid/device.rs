@@ -1,4 +1,3 @@
-extern crate async_std;
 extern crate async_trait;
 extern crate bitflags;
 extern crate hidapi;
@@ -31,9 +30,9 @@ use crate::transport::device::{FidoDevice, SupportedProtocols};
 use crate::transport::error::{Error, TransportError};
 
 #[cfg(feature = "virtual-hid-device")]
-use async_std::net::UdpSocket;
-#[cfg(feature = "virtual-hid-device")]
 use solo::SoloVirtualKey;
+#[cfg(feature = "virtual-hid-device")]
+use tokio::net::UdpSocket;
 
 const INIT_NONCE_LEN: usize = 8;
 const INIT_PAYLOAD_LEN: usize = 17;

@@ -5,7 +5,8 @@ use std::time::Duration;
 
 use byteorder::{BigEndian, ReadBytesExt};
 use sha2::{Digest, Sha256};
-use x509_parser::parse_x509_der;
+use x509_parser::prelude::X509Certificate;
+use x509_parser::traits::FromDer;
 
 #[derive(Debug)]
 pub enum Ctap1Transport {
@@ -73,8 +74,8 @@ impl Ctap1RegisterRequest {
 
     pub fn app_id_hash(&self) -> Vec<u8> {
         let mut hasher = Sha256::default();
-        hasher.input(self.app_id.as_bytes());
-        hasher.result().to_vec()
+        hasher.update(self.app_id.as_bytes());
+        hasher.finalize().to_vec()
     }
 }
 
@@ -116,7 +117,7 @@ impl TryFrom<ApduResponse> for Ctap1RegisterResponse {
         let mut remaining = vec![];
         cursor.read_to_end(&mut remaining)?;
 
-        let (signature, _) = parse_x509_der(&remaining).or(Err(IOError::new(
+        let (signature, _) = X509Certificate::from_der(&remaining).or(Err(IOError::new(
             IOErrorKind::InvalidData,
             "Failed to parse X509 attestation data",
         )))?;
@@ -167,8 +168,8 @@ impl Ctap1SignRequest {
 
     pub fn app_id_hash(&self) -> Vec<u8> {
         let mut hasher = Sha256::default();
-        hasher.input(self.app_id.as_bytes());
-        hasher.result().to_vec()
+        hasher.update(self.app_id.as_bytes());
+        hasher.finalize().to_vec()
     }
 }
 

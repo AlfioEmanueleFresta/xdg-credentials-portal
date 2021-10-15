@@ -1,10 +1,10 @@
-extern crate backend;
+extern crate libwebauthn;
 extern crate log;
 extern crate tokio;
 
-use backend::ops::u2f::{RegisterRequest, SignRequest};
-use backend::transport::hid::list_devices;
-use backend::u2f::{U2FManager, U2F};
+use libwebauthn::ops::u2f::{RegisterRequest, SignRequest};
+use libwebauthn::transport::hid::list_devices;
+use libwebauthn::u2f::{U2FManager, U2F};
 
 use log::info;
 use std::time::Duration;

@@ -1,15 +1,15 @@
 extern crate base64_url;
 extern crate log;
 
-use backend::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
-use backend::pin::StaticPinProvider;
-use backend::proto::ctap2::{
+use libwebauthn::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
+use libwebauthn::pin::StaticPinProvider;
+use libwebauthn::proto::ctap2::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialDescriptor,
     Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialType,
     Ctap2PublicKeyCredentialUserEntity,
 };
-use backend::transport::hid::list_devices;
-use backend::webauthn::{WebAuthn, WebAuthnManager};
+use libwebauthn::transport::hid::list_devices;
+use libwebauthn::webauthn::{WebAuthn, WebAuthnManager};
 
 use log::info;
 use std::convert::TryInto;
