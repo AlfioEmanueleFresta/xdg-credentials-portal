@@ -13,6 +13,8 @@ use crate::proto::ctap2::Ctap2Transport;
 use crate::proto::ctap2::{Ctap2GetAssertionRequest, Ctap2GetAssertionResponse};
 use crate::proto::ctap2::{Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse};
 
+use super::Ctap2COSEAlgorithmIdentifier;
+
 // FIDO2 operations can *sometimes* be downgrade to FIDO U2F operations.
 // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#u2f-interoperability
 
@@ -84,7 +86,13 @@ impl TryFrom<&Ctap2MakeCredentialRequest> for Ctap1RegisterRequest {
 
 impl Ctap2DowngradeCheck<Ctap1RegisterRequest> for Ctap2MakeCredentialRequest {
     fn is_downgradable(&self) -> bool {
-        true // FIXME
+        self.algorithms
+            .iter()
+            .all(|a| a.algorithm == Ctap2COSEAlgorithmIdentifier::ES256)
+            && self.options.map_or(true, |options| {
+                !(options.require_resident_key.eq(&Some(true))
+                    || options.deprecated_require_user_verification)
+            })
     }
 }
 
@@ -114,5 +122,60 @@ impl TryFrom<Ctap1SignResponse> for Ctap2GetAssertionResponse {
 
     fn try_from(_: Ctap1SignResponse) -> Result<Self, Self::Error> {
         unimplemented!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::proto::ctap2::{
+        model::Ctap2MakeCredentialOptions, Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType,
+        Ctap2DowngradeCheck, Ctap2MakeCredentialRequest, Ctap2PublicKeyCredentialType,
+    };
+
+    #[test]
+    fn ctap2_make_credential_downgradable() {
+        let mut request = Ctap2MakeCredentialRequest::dummy();
+        request.options = None;
+        request.algorithms = vec![Ctap2CredentialType::default()];
+        assert!(request.is_downgradable());
+
+        request.options = Some(Ctap2MakeCredentialOptions {
+            require_resident_key: Some(false),
+            ..Default::default()
+        });
+        assert!(request.is_downgradable());
+    }
+
+    #[test]
+    fn ctap2_make_credential_downgradable_unsupported_rk() {
+        let mut request = Ctap2MakeCredentialRequest::dummy();
+        request.options = Some(Ctap2MakeCredentialOptions {
+            require_resident_key: Some(true),
+            ..Default::default()
+        });
+        request.algorithms = vec![Ctap2CredentialType::default()];
+        assert!(!request.is_downgradable());
+    }
+
+    #[test]
+    fn ctap2_make_credential_downgradable_unsupported_uv() {
+        let mut request = Ctap2MakeCredentialRequest::dummy();
+        request.options = Some(Ctap2MakeCredentialOptions {
+            deprecated_require_user_verification: true,
+            ..Default::default()
+        });
+        request.algorithms = vec![Ctap2CredentialType::default()];
+        assert!(!request.is_downgradable());
+    }
+
+    #[test]
+    fn ctap2_make_credential_downgradable_unsupported_algorithm() {
+        let mut request = Ctap2MakeCredentialRequest::dummy();
+        request.options = None;
+        request.algorithms = vec![Ctap2CredentialType::new(
+            Ctap2PublicKeyCredentialType::PublicKey,
+            Ctap2COSEAlgorithmIdentifier::EDDSA,
+        )];
+        assert!(!request.is_downgradable());
     }
 }

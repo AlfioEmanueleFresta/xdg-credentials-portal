@@ -169,6 +169,18 @@ impl Default for Ctap2CredentialType {
     }
 }
 
+impl Ctap2CredentialType {
+    pub fn new(
+        public_key_type: Ctap2PublicKeyCredentialType,
+        algorithm: Ctap2COSEAlgorithmIdentifier,
+    ) -> Self {
+        Self {
+            public_key_type,
+            algorithm,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Ctap2MakeCredentialOptions {
     #[serde(rename = "rk")]
@@ -178,6 +190,15 @@ pub struct Ctap2MakeCredentialOptions {
     #[serde(rename = "uv")]
     #[serde(skip_serializing_if = "Self::skip_serializing_uv")]
     pub deprecated_require_user_verification: bool,
+}
+
+impl Default for Ctap2MakeCredentialOptions {
+    fn default() -> Self {
+        Self {
+            require_resident_key: None,
+            deprecated_require_user_verification: false,
+        }
+    }
 }
 
 impl Ctap2MakeCredentialOptions {
