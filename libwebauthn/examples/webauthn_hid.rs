@@ -1,5 +1,8 @@
-extern crate base64_url;
-extern crate log;
+use std::convert::TryInto;
+use std::time::Duration;
+
+use tracing::info;
+use tracing_subscriber::{self, EnvFilter};
 
 use libwebauthn::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
 use libwebauthn::pin::StaticPinProvider;
@@ -11,15 +14,15 @@ use libwebauthn::proto::ctap2::{
 use libwebauthn::transport::hid::list_devices;
 use libwebauthn::webauthn::{WebAuthn, WebAuthnManager};
 
-use log::info;
-use std::convert::TryInto;
-use std::time::Duration;
-
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .without_time()
+        .init();
+
     let devices = list_devices().await.unwrap();
     info!("Devices found: {:?}", devices);
 

@@ -1,11 +1,9 @@
-extern crate async_trait;
-extern crate log;
-
-use async_trait::async_trait;
-use log::debug;
 use std::convert::TryInto;
 use std::fmt;
 use std::time::Duration;
+
+use async_trait::async_trait;
+use tracing::{debug, info, instrument, trace, Level};
 
 use crate::proto::ctap1::apdu::{ApduRequest, ApduResponse};
 use crate::proto::CtapError;
@@ -22,13 +20,15 @@ use super::bluez::{supported_fido_revisions, FidoDevice as BlueZFidoDevice};
 use super::bluez;
 use super::framing::{BleCommand, BleFrame};
 
+#[instrument]
 pub async fn list_devices() -> Result<Vec<BleFidoDevice>, Error> {
-    let devices = bluez::list_devices()
+    let devices: Vec<_> = bluez::list_devices()
         .await
         .or(Err(Error::Transport(TransportError::TransportUnavailable)))?
         .iter()
         .map(|bluez_device| bluez_device.into())
         .collect();
+    info!({ count = devices.len() }, "Listing available HID devices");
     Ok(devices)
 }
 #[derive(Debug, Clone)]
@@ -70,7 +70,7 @@ impl fmt::Display for BleFidoDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{:} ({:}, {:}",
+            "{:} ({:}, {:})",
             self.alias(),
             if self.is_connected() {
                 "connected"
@@ -88,6 +88,7 @@ impl fmt::Display for BleFidoDevice {
 
 #[async_trait]
 impl FidoDevice for BleFidoDevice {
+    #[instrument]
     async fn supported_protocols(&mut self) -> Result<SupportedProtocols, Error> {
         let revisions = match self.revisions {
             None => {
@@ -107,6 +108,7 @@ impl FidoDevice for BleFidoDevice {
         Ok(protocols)
     }
 
+    #[instrument(level = Level::DEBUG, skip_all)]
     async fn send_apdu_request(
         &mut self,
         request: &ApduRequest,
@@ -120,7 +122,9 @@ impl FidoDevice for BleFidoDevice {
             .select_protocol(FidoProtocol::U2F)
             .ok_or(Transport(TransportError::NegotiationFailed))?;
 
-        debug!("Sending APDU request (rev.: {:?}): {:?}", revision, request);
+        debug!({rev = ?revision}, "Sending APDU request");
+        trace!(?request);
+
         let request_apdu_packet = request.raw_long().or(Err(TransportError::InvalidFraming))?;
         let request_frame = BleFrame::new(BleCommand::Msg, &request_apdu_packet);
         let response_frame = bluez::request(&self.bluez_device, &revision, &request_frame, timeout)
@@ -137,10 +141,13 @@ impl FidoDevice for BleFidoDevice {
             .try_into()
             .or(Err(TransportError::InvalidFraming))?;
 
-        debug!("Received APDU response: {:?}", &response_apdu);
+        debug!("Received APDU response");
+        trace!(?response_apdu);
+
         Ok(response_apdu)
     }
 
+    #[instrument(level = Level::DEBUG, skip_all)]
     async fn send_cbor_request(
         &mut self,
         _: &crate::proto::ctap2::cbor::CborRequest,

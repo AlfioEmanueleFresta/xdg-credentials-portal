@@ -1,3 +1,9 @@
+use std::io::Cursor as IOCursor;
+use std::thread::sleep;
+use std::time::Duration;
+
+use tracing::{debug, info, instrument, span, trace, warn, Level};
+
 use super::device::{FidoDevice as Device, FidoEndpoints as Endpoints};
 use super::gatt::{get_gatt_characteristic, get_gatt_service};
 use super::Error;
@@ -14,10 +20,6 @@ use blurz::{
 };
 
 use byteorder::{BigEndian, ReadBytesExt};
-use log::{debug, info, warn};
-use std::io::Cursor as IOCursor;
-use std::thread::sleep;
-use std::time::Duration;
 
 pub const WAIT_LOOP_MS: u32 = 250;
 pub const CONNECT_MAX_TIMEOUT_MS: i32 = 30_000;
@@ -61,22 +63,34 @@ impl SupportedRevisions {
 }
 
 pub async fn start_discovery() -> Result<(), Error> {
-    tokio::task::spawn_blocking(move || start_discovery_blocking())
-        .await
-        .unwrap()
+    let span = span!(Level::INFO, "start_discovery");
+    tokio::task::spawn_blocking(move || {
+        let _enter = span.enter();
+        start_discovery_blocking()
+    })
+    .await
+    .unwrap()
 }
 
 pub async fn list_devices() -> Result<Vec<Device>, Error> {
-    tokio::task::spawn_blocking(move || list_devices_blocking())
-        .await
-        .unwrap()
+    let span = span!(Level::INFO, "list_devices");
+    tokio::task::spawn_blocking(move || {
+        let _enter = span.enter();
+        list_devices_blocking()
+    })
+    .await
+    .unwrap()
 }
 
 pub async fn supported_fido_revisions(target: &Device) -> Result<SupportedRevisions, Error> {
+    let span = span!(Level::DEBUG, "supported_fido_revisions");
     let target = target.clone();
-    tokio::task::spawn_blocking(move || supported_fido_revisions_blocking(&target))
-        .await
-        .unwrap()
+    tokio::task::spawn_blocking(move || {
+        let _enter = span.enter();
+        supported_fido_revisions_blocking(&target)
+    })
+    .await
+    .unwrap()
 }
 
 pub async fn request(
@@ -85,12 +99,16 @@ pub async fn request(
     frame: &Frame,
     timeout: Duration,
 ) -> Result<Frame, Error> {
+    let span = span!(Level::DEBUG, "request");
     let device = device.clone();
     let revision = revision.clone();
     let frame = frame.clone();
-    tokio::task::spawn_blocking(move || request_blocking(&device, &revision, &frame, timeout))
-        .await
-        .unwrap()
+    tokio::task::spawn_blocking(move || {
+        let _enter = span.enter();
+        request_blocking(&device, &revision, &frame, timeout)
+    })
+    .await
+    .unwrap()
 }
 
 fn start_discovery_blocking() -> Result<(), Error> {
@@ -157,8 +175,10 @@ fn request_blocking(
         .or(Err(Error::InvalidFraming))?;
 
     let control_point = BluetoothGATTCharacteristic::new(&session, endpoints.control_point.clone());
-    for fragment in fragments {
-        debug!("Sending fragment: {:?}", fragment);
+    for (i, fragment) in fragments.into_iter().enumerate() {
+        debug!({ fragment = i, len = fragment.len() }, "Sending fragment");
+        trace!(?fragment);
+
         control_point
             .write_value(fragment, None)
             .or(Err(Error::OperationFailed))?;
@@ -180,8 +200,8 @@ fn control_point_length(session: &BluetoothSession, endpoints: &Endpoints) -> Re
 
     if max_fragment_length.len() != 2 {
         warn!(
-            "Control point length endpoint returned an unexpected number of bytes ({}).",
-            max_fragment_length.len()
+            { len = max_fragment_length.len() },
+            "Control point length endpoint returned an unexpected number of bytes",
         );
         return Err(Error::OperationFailed);
     }
@@ -191,20 +211,24 @@ fn control_point_length(session: &BluetoothSession, endpoints: &Endpoints) -> Re
     Ok(max_fragment_size)
 }
 
+#[instrument(level = Level::DEBUG, skip_all, fields(dev = %target.alias))]
 fn connect(session: &BluetoothSession, target: &Device) -> Result<(), Error> {
     let device = BluetoothDevice::new(session, target.path.clone());
     if !device.is_paired().or(Err(Error::Unavailable))? {
-        info!("Pairing required to target device: {:?}", target);
+        info!("Sending pairing required to target device");
         device.pair().or(Err(Error::ConnectionFailed))?;
     }
     if !device.is_connected().or(Err(Error::Unavailable))? {
-        debug!("Connecting to target device: {:?}", target);
+        debug!(
+            { timeout_ms = CONNECT_MAX_TIMEOUT_MS },
+            "Attempting connection..."
+        );
         device
             .connect(CONNECT_MAX_TIMEOUT_MS)
             .or(Err(Error::ConnectionFailed))?;
     }
     wait_until_services_resolved(&device)?;
-    info!("Connected to target device: {:?}", target);
+    info!("Connected to target device");
     Ok(())
 }
 
@@ -218,14 +242,11 @@ fn wait_until_services_resolved(device: &BluetoothDevice) -> Result<(), Error> {
             .get_gatt_services()
             .or(Err(Error::ConnectionFailed))?;
         if !services.is_empty() {
-            debug!("{} services found. Continuing.", services.len());
+            debug!({ count = services.len() }, "GATT services discovered");
             return Ok(());
         }
         if waited_for >= SERVICES_DISCOVERY_MAX_TIMEOUT_MS {
-            warn!(
-                "Timed out whilst waiting for services to be resolved for device {:?}",
-                device
-            );
+            warn!("Timed out whilst waiting for services to be resolved");
             return Err(Error::ConnectionFailed);
         }
         debug!("Services not yet resolved. Waiting {} ms.", WAIT_LOOP_MS);
@@ -234,15 +255,14 @@ fn wait_until_services_resolved(device: &BluetoothDevice) -> Result<(), Error> {
     }
 }
 
+#[instrument(level = Level::DEBUG, skip_all)]
 fn discover_services(session: &BluetoothSession, target: &Device) -> Result<Endpoints, Error> {
     debug!("Attempting to discover FIDO services.");
     let device = BluetoothDevice::new(session, target.path.clone());
     let fido_service =
         get_gatt_service(&session, &device, FIDO_PROFILE_UUID).or(Err(Error::ConnectionFailed))?;
-    debug!(
-        "Discovered FIDO service (UUID {}): {:?}",
-        FIDO_PROFILE_UUID, fido_service
-    );
+    debug!({ uuid = FIDO_PROFILE_UUID }, "Discovered FIDO service");
+    trace!(?fido_service);
 
     let control_point = get_gatt_characteristic(session, &fido_service, FIDO_CONTROL_POINT_UUID)?;
     let control_point_length =
@@ -271,14 +291,14 @@ fn supported_fido_revisions_blocking(target: &Device) -> Result<SupportedRevisio
         .read_value(None)
         .or(Err(Error::OperationFailed))?;
     let bitfield = revision.iter().next().ok_or(Error::OperationFailed)?;
-    debug!("Supported revision bitfield: {:?}", revision);
+    debug!(?revision, "Supported revision bitfield");
 
     let supported = SupportedRevisions {
         u2fv11: bitfield & FidoRevision::U2fv11 as u8 != 0x00,
         u2fv12: bitfield & FidoRevision::U2fv12 as u8 != 0x00,
         v2: bitfield & FidoRevision::V2 as u8 != 0x00,
     };
-    info!("Device reported supporting FIDO revisions {:?}", supported);
+    info!(?supported, "Device reported supporting FIDO revisions");
     Ok(supported)
 }
 
@@ -294,7 +314,7 @@ fn select_fido_revision(
         .write_value(vec![ack], None)
         .or(Err(Error::OperationFailed))?;
 
-    info!("Successfully selected FIDO revision: {:?}", &revision);
+    info!(?revision, "Successfully selected FIDO revision");
     Ok(())
 }
 
@@ -307,7 +327,8 @@ fn wait_for_response(
     loop {
         let fragments = receive_fragments(session, endpoints, WAIT_LOOP_MS);
         waited_for += WAIT_LOOP_MS;
-        debug!("Received fragments: {:?}", fragments);
+        debug!({ count = fragments.len() }, "Received response fragments");
+        trace!(?fragments);
 
         let mut parser = BleFrameParser::new();
         for fragment in &fragments {
@@ -315,25 +336,26 @@ fn wait_for_response(
             match status {
                 BleFrameParserResult::Done => {
                     let frame = parser.frame().unwrap();
+                    trace!(?frame, "Received frame");
                     match frame.cmd {
                         BleCommand::Keepalive => {
                             waited_for = 0;
-                            debug!("Received keep-alive from authenticator.");
+                            debug!("Received keep-alive from authenticator");
                             parser.reset();
                         }
                         BleCommand::Cancel => {
-                            info!("Device canceled: {:?}", frame);
+                            info!("Device canceled operation");
                             return Err(Error::Canceled);
                         }
                         BleCommand::Error => {
-                            warn!("Received error frame: {:?}", frame);
+                            warn!("Received error frame");
                             return Err(Error::OperationFailed);
                         }
                         BleCommand::Ping => {
-                            debug!("Ping received. Ignoring.");
+                            debug!("Ignoring ping from device");
                         }
                         BleCommand::Msg => {
-                            debug!("Received complete response: {:?}", frame);
+                            debug!("Received operation response");
                             return Ok(frame);
                         }
                     }
@@ -343,7 +365,7 @@ fn wait_for_response(
         }
 
         if waited_for > timeout.as_millis() as u32 {
-            warn!("Timeout waiting for a response from the BLE device.");
+            warn!("Timeout waiting for a response from the BLE device");
             return Err(Error::Timeout);
         }
     }

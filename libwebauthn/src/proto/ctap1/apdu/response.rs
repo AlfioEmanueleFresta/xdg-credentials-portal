@@ -1,7 +1,8 @@
-use byteorder::{BigEndian, ReadBytesExt};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::convert::{TryFrom, TryInto};
 use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
+
+use byteorder::{BigEndian, ReadBytesExt};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[derive(Debug, PartialEq)]
 pub struct ApduResponse {

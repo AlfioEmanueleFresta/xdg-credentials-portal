@@ -1,8 +1,6 @@
-extern crate num_enum;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::proto::ctap1::apdu::ApduResponseStatus;
-
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#error-responses
 

@@ -1,11 +1,8 @@
-extern crate async_trait;
-extern crate hidapi;
-extern crate serde;
-extern crate serde_cbor;
-
-use async_trait::async_trait;
 use std::fmt::Display;
 use std::marker::PhantomData;
+
+use async_trait::async_trait;
+use tracing::instrument;
 
 use crate::proto::ctap1::{Ctap1, Ctap1Protocol};
 use crate::transport::device::FidoDevice;
@@ -31,6 +28,7 @@ impl<T> U2F<T> for U2FManager<T>
 where
     T: FidoDevice + Send + Display,
 {
+    #[instrument(skip_all, fields(dev = %device))]
     async fn register(device: &mut T, op: &RegisterRequest) -> Result<RegisterResponse, Error> {
         let protocol = U2FManager::negotiate_u2f_protocol(device).await?;
         match protocol {
@@ -39,6 +37,7 @@ where
         }
     }
 
+    #[instrument(skip_all, fields(dev = %device))]
     async fn sign(device: &mut T, op: &SignRequest) -> Result<SignResponse, Error> {
         let protocol = U2FManager::negotiate_u2f_protocol(device).await?;
 
@@ -51,8 +50,9 @@ where
 
 impl<T> U2FManager<T>
 where
-    T: FidoDevice + Send,
+    T: FidoDevice + Send + Display,
 {
+    #[instrument(skip_all)]
     async fn negotiate_u2f_protocol(device: &mut T) -> Result<FidoProtocol, Error> {
         let supported = device.supported_protocols().await?;
         if !supported.u2f && !supported.fido2 {

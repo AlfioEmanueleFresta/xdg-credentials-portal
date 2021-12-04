@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::path::Path;
 use std::process::Stdio;
 use std::thread::sleep;
@@ -13,6 +14,12 @@ use log::{debug, warn};
 #[derive(Debug)]
 pub struct SoloVirtualKey {
     handle: Child,
+}
+
+impl Display for SoloVirtualKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SoloVirtualKey(pid={})", self.handle.id().unwrap_or(0))
+    }
 }
 
 impl Default for SoloVirtualKey {

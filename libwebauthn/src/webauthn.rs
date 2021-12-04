@@ -1,13 +1,9 @@
-extern crate async_trait;
-extern crate hidapi;
-extern crate log;
-extern crate serde;
-extern crate serde_cbor;
+use std::convert::TryInto;
+use std::fmt::Display;
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use log::{debug, info, warn};
-use std::convert::TryInto;
-use std::marker::PhantomData;
+use tracing::{debug, info, instrument, trace, warn};
 
 use crate::ops::webauthn::{GetAssertionRequest, GetAssertionResponse};
 use crate::ops::webauthn::{MakeCredentialRequest, MakeCredentialResponse};
@@ -45,21 +41,23 @@ pub trait WebAuthn<T> {
 
 pub struct WebAuthnManager<'a, T, P: 'a> {
     device_type: PhantomData<T>,
+    #[allow(dead_code)]
     pin_provider: &'a P,
 }
 
 #[async_trait]
 impl<'a, T, P: 'a> WebAuthn<T> for WebAuthnManager<'a, T, P>
 where
-    T: FidoDevice + Send + Sync,
+    T: FidoDevice + Send + Sync + Display,
     P: PinProvider + Send + Sync,
 {
+    #[instrument(skip_all, fields(dev = %device))]
     async fn make_credential(
         &self,
         device: &mut T,
         op: &MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
-        debug!("WebAuthn MakeCredential request: {:?}", op);
+        trace!(?op, "WebAuthn MakeCredential request");
         let ctap2_request: &Ctap2MakeCredentialRequest = &op.into();
         let protocol = self
             .negotiate_protocol(device, ctap2_request.is_downgradable())
@@ -70,11 +68,13 @@ where
         }
     }
 
+    #[instrument(skip_all, fields(dev = %device))]
     async fn get_assertion(
         &self,
         device: &mut T,
         op: &GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error> {
+        trace!(?op, "WebAuthn GetAssertion request");
         let ctap2_request: &Ctap2GetAssertionRequest = &op.into();
         let protocol = self
             .negotiate_protocol(device, ctap2_request.is_downgradable())
@@ -187,6 +187,7 @@ where
         todo!()
     }
 
+    #[instrument(skip_all)]
     async fn negotiate_protocol(
         &self,
         device: &mut T,

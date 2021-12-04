@@ -1,25 +1,18 @@
-extern crate async_trait;
-extern crate bitflags;
-extern crate hidapi;
-extern crate log;
-extern crate rand;
-extern crate tokio;
-
-use async_trait::async_trait;
-use byteorder::{BigEndian, ReadBytesExt};
-use hidapi::DeviceInfo;
-use hidapi::HidApi;
-use hidapi::HidDevice;
-use log::{debug, warn};
-use tokio::time::sleep;
-
-use rand::{thread_rng, Rng};
 use std::fmt;
 use std::time::Duration;
 use std::{
     convert::TryFrom,
     io::{Cursor as IOCursor, Seek, SeekFrom},
 };
+
+use async_trait::async_trait;
+use byteorder::{BigEndian, ReadBytesExt};
+use hidapi::DeviceInfo;
+use hidapi::HidApi;
+use hidapi::HidDevice;
+use rand::{thread_rng, Rng};
+use tokio::time::sleep;
+use tracing::{debug, info, instrument, trace, warn, Level};
 
 use crate::proto::ctap1::apdu::ApduResponse;
 use crate::proto::ctap2::cbor::{CborRequest, CborResponse};
@@ -96,7 +89,7 @@ impl fmt::Display for HidFidoDevice {
                 dev.release_number()
             ),
             #[cfg(feature = "virtual-hid-device")]
-            HidBackendDevice::VirtualDevice(dev) => write!(f, "Virtual device: {:?}", dev),
+            HidBackendDevice::VirtualDevice(dev) => dev.fmt(f),
         }
     }
 }
@@ -106,19 +99,25 @@ fn get_hidapi() -> Result<HidApi, Error> {
 }
 
 #[cfg(feature = "virtual-hid-device")]
+#[instrument]
 pub async fn list_devices() -> Result<Vec<HidFidoDevice>, Error> {
+    info!("Faking device list, returning virtual device");
     Ok(vec![HidFidoDevice::new_virtual()])
 }
 
 #[cfg(not(feature = "virtual-hid-device"))]
+#[instrument]
 pub async fn list_devices() -> Result<Vec<HidFidoDevice>, Error> {
-    Ok(get_hidapi()?
+    let devices: Vec<_> = get_hidapi()?
         .device_list()
         .into_iter()
         .filter(|device| device.usage_page() == 0xF1D0)
         .filter(|device| device.usage() == 0x0001)
         .map(|device| device.into())
-        .collect())
+        .collect();
+    info!({ count = devices.len() }, "Listing available BLE devices");
+    debug!(?devices);
+    Ok(devices)
 }
 
 impl HidFidoDevice {
@@ -131,6 +130,7 @@ impl HidFidoDevice {
         }
     }
 
+    #[instrument(skip_all, fields(dev = %self))]
     pub async fn wink(&mut self, timeout: Duration) -> Result<bool, Error> {
         self.init(timeout).await?;
 
@@ -149,10 +149,11 @@ impl HidFidoDevice {
         Ok(true)
     }
 
+    #[instrument(level = Level::DEBUG, skip_all)]
     async fn init(&mut self, timeout: Duration) -> Result<(), Error> {
         if self.init.is_some() {
             // FIXME does the channel expire?
-            debug!("Device {:} already init.", self);
+            debug!("Already init'd, skipping.");
             return Ok(());
         }
 
@@ -161,14 +162,14 @@ impl HidFidoDevice {
         let response = self.hid_transact(&request, timeout).await?;
 
         if response.cmd != HidCommand::Init {
-            warn!("Invalid response to INIT request: {:?}", response.cmd);
+            warn!(?response.cmd, "Invalid response to INIT request");
             return Err(Error::Transport(TransportError::InvalidEndpoint));
         }
 
         if response.payload.len() < INIT_PAYLOAD_LEN {
             warn!(
-                "INIT payload is too small ({} bytes)",
-                response.payload.len()
+                { len = response.payload.len() },
+                "INIT payload is too small"
             );
             return Err(Error::Transport(TransportError::InvalidEndpoint));
         }
@@ -189,12 +190,14 @@ impl HidFidoDevice {
             version_build: cursor.read_u8().unwrap(),
             caps: Caps::from_bits_truncate(cursor.read_u8().unwrap()),
         };
-        debug!("Device {:} INIT response: {:?}", self, &init);
+
+        debug!(?init, "Device init complete");
         self.init = Some(init);
 
         Ok(())
     }
 
+    #[instrument(level = Level::DEBUG, skip_all)]
     fn hid_cancel(&self, cid: u32, hidapi_device: &HidDevice) -> Result<(), Error> {
         self.hid_send(
             &HidMessage::new(cid, HidCommand::Cancel, &[]),
@@ -202,6 +205,7 @@ impl HidFidoDevice {
         )
     }
 
+    #[instrument(level = Level::DEBUG, skip_all)]
     async fn hid_transact(&self, msg: &HidMessage, timeout: Duration) -> Result<HidMessage, Error> {
         match self.device {
             HidBackendDevice::HidApiDevice(_) => self.hid_transact_hidapi(msg, timeout).await,
@@ -214,27 +218,30 @@ impl HidFidoDevice {
     async fn hid_transact_virtual(
         &self,
         msg: &HidMessage,
-        timeout: Duration,
+        _timeout: Duration,
     ) -> Result<HidMessage, Error> {
         // https://github.com/solokeys/python-fido2/commit/4964d98ca6d0cfc24cd49926521282b8e92c598d
         let socket = UdpSocket::bind("127.0.0.1:7112")
             .await
             .or(Err(Error::Transport(TransportError::TransportUnavailable)))?;
 
-        debug!("U2F HID request to UDP virtual device: {:?}", msg);
+        debug!({ cmd = ?msg.cmd, payload_len = msg.payload.len() }, "U2F HID request to UDP virtual device");
+        trace!(?msg);
+
         let packets = msg
             .packets(PACKET_SIZE)
             .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
-        for packet in packets {
+        for (i, packet) in packets.iter().enumerate() {
             let mut report: Vec<u8> = vec![];
-            report.extend(&packet);
+            report.extend(packet);
             report.extend(vec![0; PACKET_SIZE - packet.len()]);
+
             debug!(
-                "Sending HID report to {:} ({:} bytes): {:?}",
-                self,
-                report.len(),
-                report
+                { packet = i, len = report.len() },
+                "Sending packet as HID report",
             );
+            trace!(?packet);
+
             socket
                 .send_to(&report, "127.0.0.1:8111")
                 .await
@@ -249,7 +256,12 @@ impl HidFidoDevice {
                     .recv_from(&mut report)
                     .await
                     .or(Err(Error::Transport(TransportError::ConnectionLost)))?;
-                debug!("Received HID report from UDP virtual device: {:?}", report);
+                debug!(
+                    { len = report.len() },
+                    "Received HID report from UDP virtual device"
+                );
+                trace!(?report);
+
                 if let HidMessageParserState::Done = parser
                     .update(&report)
                     .or(Err(Error::Transport(TransportError::InvalidFraming)))?
@@ -261,10 +273,12 @@ impl HidFidoDevice {
             let response = parser
                 .message()
                 .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
-            debug!("U2F HID response from UDP virtual device: {:?}", response);
+            debug!({ cmd = ?response.cmd }, "Parsed U2F HID response from UDP virtual device");
+            trace!(?response);
+
             match response.cmd {
                 HidCommand::KeepAlive => {
-                    debug!("HID keep-alive received. Ignoring: {:?}", response);
+                    debug!("Ignoring HID keep-alive");
                     continue;
                 }
                 _ => break response,
@@ -287,7 +301,7 @@ impl HidFidoDevice {
             let response = self.hid_receive(&hidapi_device, timeout)?;
             match response.cmd {
                 HidCommand::KeepAlive => {
-                    debug!("HID keep-alive received. Ignoring: {:?}", response);
+                    debug!("Ignoring HID keep-alive");
                     continue;
                 }
                 _ => break response,
@@ -307,27 +321,24 @@ impl HidFidoDevice {
         }
     }
 
+    #[instrument(skip_all, fields(cmd = ?msg.cmd, payload_len = msg.payload.len()))]
     fn hid_send(&self, msg: &HidMessage, hidapi_device: &HidDevice) -> Result<(), Error> {
-        debug!("U2F HID request to {:}: {:?}", self, msg);
         let packets = msg
             .packets(PACKET_SIZE)
             .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
-        for packet in packets {
+        for (i, packet) in packets.iter().enumerate() {
             let mut report: Vec<u8> = vec![REPORT_ID];
-            report.extend(&packet);
+            report.extend(packet);
             report.extend(vec![0; PACKET_SIZE - packet.len()]);
-            debug!(
-                "Sending HID report to {:} ({:} bytes): {:?}",
-                self,
-                report.len(),
-                report
-            );
+            debug!({ packet = i, len = report.len() }, "Sending packet as HID report",);
+            trace!(?report);
             hidapi_device.write(&report).unwrap();
         }
 
         Ok(())
     }
 
+    #[instrument(skip_all)]
     fn hid_receive(
         &self,
         hidapi_device: &HidDevice,
@@ -339,7 +350,8 @@ impl HidFidoDevice {
             hidapi_device
                 .read_timeout(&mut report, timeout.as_millis() as i32)
                 .or(Err(Error::Transport(TransportError::ConnectionLost)))?;
-            debug!("Received HID report from {:}: {:?}", self, report);
+            debug!({ len = report.len() }, "Received HID report");
+            trace!(?report);
             if let HidMessageParserState::Done = parser
                 .update(&report)
                 .or(Err(Error::Transport(TransportError::InvalidFraming)))?
@@ -351,7 +363,8 @@ impl HidFidoDevice {
         let response = parser
             .message()
             .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
-        debug!("U2F HID response from {:}: {:?}", self, response);
+        debug!({ cmd = ?response.cmd, payload_len = response.payload.len() }, "Received U2F HID response");
+        trace!(?response);
         Ok(response)
     }
 }
@@ -378,10 +391,9 @@ impl FidoDevice for HidFidoDevice {
         self.init(INIT_TIMEOUT).await?;
 
         let cid = self.init.unwrap().cid;
-        debug!(
-            "Sending APDU request to {} (cid: {}): {:?}",
-            self, cid, request
-        );
+        debug!({ cid }, "Sending APDU request");
+        trace!(?request);
+
         let apdu_raw = request.raw_long().unwrap();
         let hid_response = self
             .hid_transact(&HidMessage::new(cid, HidCommand::Msg, &apdu_raw), timeout)
@@ -389,7 +401,9 @@ impl FidoDevice for HidFidoDevice {
         let apdu_response = ApduResponse::try_from(&hid_response.payload)
             .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
 
-        debug!("Received APDU response: {:?}", apdu_response);
+        debug!("Received APDU response");
+        trace!(?apdu_response);
+
         Ok(apdu_response)
     }
 
@@ -401,10 +415,8 @@ impl FidoDevice for HidFidoDevice {
         self.init(INIT_TIMEOUT).await?;
 
         let cid = self.init.unwrap().cid;
-        debug!(
-            "Sending CBOR request to {} (cid: {}): {:?}",
-            self, cid, request
-        );
+        debug!({ cid }, "Sending CBOR request");
+        trace!(?request);
         let hid_response = self
             .hid_transact(
                 &HidMessage::new(cid, HidCommand::Cbor, &request.ctap_hid_data()),
@@ -414,7 +426,12 @@ impl FidoDevice for HidFidoDevice {
         let cbor_response = CborResponse::try_from(&hid_response.payload)
             .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
 
-        debug!("Received CBOR response: {:?}", cbor_response);
+        debug!(
+            { status = ?cbor_response.status_code },
+            "Received CBOR response"
+        );
+        trace!(?cbor_response);
+
         Ok(cbor_response)
     }
 }

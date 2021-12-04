@@ -1,4 +1,3 @@
-use crate::proto::ctap1::apdu::{ApduResponse, ApduResponseStatus};
 use std::convert::TryFrom;
 use std::io::{BufRead, Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind, Read};
 use std::time::Duration;
@@ -7,6 +6,8 @@ use byteorder::{BigEndian, ReadBytesExt};
 use sha2::{Digest, Sha256};
 use x509_parser::prelude::X509Certificate;
 use x509_parser::traits::FromDer;
+
+use crate::proto::ctap1::apdu::{ApduResponse, ApduResponseStatus};
 
 #[derive(Debug)]
 pub enum Ctap1Transport {

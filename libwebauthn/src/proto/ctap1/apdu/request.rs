@@ -1,8 +1,9 @@
 use std::io::{Error as IOError, ErrorKind as IOErrorKind};
 
+use byteorder::{BigEndian, WriteBytesExt};
+
 use crate::proto::ctap1::model::Ctap1VersionRequest;
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
-use byteorder::{BigEndian, WriteBytesExt};
 
 const APDU_SHORT_MAX_DATA: usize = 0x100;
 const APDU_SHORT_MAX_LE: usize = 0x100;

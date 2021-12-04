@@ -1,11 +1,8 @@
-extern crate byteorder;
-extern crate num_enum;
+use std::convert::TryInto;
+use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-
-use std::convert::TryInto;
-use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
 const INITIAL_FRAGMENT_HEADER_LENGTH: usize = 3; // 1B op, 2B length
 const INITIAL_FRAGMENT_MIN_LENGTH: usize = INITIAL_FRAGMENT_HEADER_LENGTH;

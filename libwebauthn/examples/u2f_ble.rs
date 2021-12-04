@@ -1,19 +1,20 @@
-extern crate libwebauthn;
-extern crate log;
-extern crate tokio;
+use std::time::Duration;
+
+use tracing::info;
+use tracing_subscriber::{self, EnvFilter};
 
 use libwebauthn::ops::u2f::{RegisterRequest, SignRequest};
 use libwebauthn::transport::ble::list_devices;
 use libwebauthn::u2f::{U2FManager, U2F};
 
-use log::info;
-use std::time::Duration;
-
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .without_time()
+        .init();
 
     let devices = list_devices().await?;
 

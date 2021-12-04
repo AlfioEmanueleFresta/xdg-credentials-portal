@@ -1,15 +1,13 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::time::Duration;
-
-extern crate maplit;
 
 use dbus::arg;
 use dbus::arg::{RefArg, Variant};
 use dbus::blocking::Connection;
 use dbus::blocking::Proxy;
 use dbus::Message;
-use log::debug;
-use std::error::Error;
+use tracing::debug;
 use uuid::Uuid;
 
 #[derive(Debug)]

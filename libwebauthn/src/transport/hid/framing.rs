@@ -1,12 +1,8 @@
-extern crate byteorder;
-extern crate log;
-extern crate num_enum;
+use std::convert::TryInto;
+use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-
-use std::convert::TryInto;
-use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
 const BROADCAST_CID: u32 = 0xFFFFFFFF;
 const PACKET_INITIAL_HEADER_SIZE: usize = 7;

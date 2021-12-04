@@ -1,14 +1,12 @@
-extern crate async_trait;
-
 use std::time::Duration;
+
+use async_trait::async_trait;
 
 use crate::proto::{
     ctap1::apdu::{ApduRequest, ApduResponse},
     ctap2::cbor::{CborRequest, CborResponse},
 };
 use crate::transport::error::Error;
-
-use async_trait::async_trait;
 
 #[derive(Debug, Copy, Clone)]
 pub struct SupportedProtocols {

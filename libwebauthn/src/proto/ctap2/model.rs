@@ -1,29 +1,20 @@
-extern crate byteorder;
-extern crate cosey;
-extern crate log;
-extern crate num_enum;
-extern crate serde;
-extern crate serde_cbor;
-extern crate serde_indexed;
-extern crate serde_repr;
+use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::io::Cursor as IOCursor;
 
-use crate::transport::error::CtapError;
 use byteorder::{BigEndian, ReadBytesExt};
 use cosey::P256PublicKey;
-use log::warn;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use serde_bytes::ByteBuf;
 use serde_derive::{Deserialize, Serialize};
 use serde_indexed::{DeserializeIndexed, SerializeIndexed};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use sha2::{Digest, Sha256};
+use tracing::warn;
 
 use crate::ops::webauthn::GetAssertionRequest;
 use crate::ops::webauthn::MakeCredentialRequest;
-
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::io::Cursor as IOCursor;
+use crate::transport::error::CtapError;
 
 // 32 (rpIdHash) + 1 (flags) + 4 (signCount) + 16 (aaguid)
 const AUTHENTICATOR_DATA_PUBLIC_KEY_OFFSET: usize = 53;

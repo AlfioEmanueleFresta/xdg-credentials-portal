@@ -1,14 +1,10 @@
-extern crate async_trait;
-extern crate log;
-extern crate tokio;
-
-use super::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
+use std::{convert::TryInto, marker::PhantomData, time::Duration};
 
 use async_trait::async_trait;
-use log::debug;
-use std::{convert::TryInto, marker::PhantomData, time::Duration};
 use tokio::time::{sleep, timeout as tokio_timeout};
+use tracing::{debug, instrument, trace};
 
+use super::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
 use super::{
     Ctap1RegisterRequest, Ctap1RegisterResponse, Ctap1SignRequest, Ctap1SignResponse,
     Ctap1VersionRequest, Ctap1VersionResponse,
@@ -41,11 +37,13 @@ impl<T> Ctap1<T> for Ctap1Protocol<T>
 where
     T: FidoDevice + Send,
 {
+    #[instrument(skip_all)]
     async fn register(
         device: &mut T,
         request: &Ctap1RegisterRequest,
     ) -> Result<Ctap1RegisterResponse, Error> {
-        debug!("CTAP1 register request: {:?}", request);
+        debug!({ %request.app_id, %request.require_user_presence, %request.check_only }, "CTAP1 register request");
+        trace!(?request);
         // TODO iterate over exclude list
 
         let apdu_request: ApduRequest = request.into();
@@ -58,12 +56,15 @@ where
         }
 
         let response: Ctap1RegisterResponse = apdu_response.try_into().unwrap();
-        debug!("CTAP1 register response: {:?}", response);
+        debug!("CTAP1 register response");
+        trace!(?response);
         Ok(response)
     }
 
+    #[instrument(skip_all)]
     async fn sign(device: &mut T, request: &Ctap1SignRequest) -> Result<Ctap1SignResponse, Error> {
-        debug!("CTAP1 sign request: {:?}", request);
+        debug!({ %request.app_id, %request.require_user_presence }, "CTAP1 sign request");
+        trace!(?request);
 
         let apdu_request: ApduRequest = request.into();
         let apdu_response =
@@ -75,10 +76,12 @@ where
         }
 
         let response: Ctap1SignResponse = apdu_response.try_into().unwrap();
-        debug!("CTAP1 sign response: {:?}", response);
+        debug!({ ?response.user_presence_verified }, "CTAP1 sign response received");
+        trace!(?response);
         Ok(response)
     }
 
+    #[instrument(skip_all)]
     async fn version(device: &mut T) -> Result<Ctap1VersionResponse, Error> {
         let request = &Ctap1VersionRequest::new();
         let apdu_request: ApduRequest = request.into();
@@ -86,7 +89,7 @@ where
             .send_apdu_request(&apdu_request, VERSION_TIMEOUT)
             .await?;
         let response: Ctap1VersionResponse = apdu_response.try_into().or(Err(CtapError::Other))?;
-        debug!("CTAP1 version response: {:?}", response);
+        debug!({ ?response.version }, "CTAP1 version response");
         Ok(response)
     }
 }

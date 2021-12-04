@@ -1,8 +1,5 @@
-extern crate async_trait;
-extern crate log;
-
 use async_trait::async_trait;
-use log::info;
+use tracing::info;
 
 pub struct PinUvAuthToken {
     pub rpid: Option<String>,

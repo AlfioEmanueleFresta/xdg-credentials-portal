@@ -1,7 +1,6 @@
-extern crate authenticator;
-extern crate base64_url;
-extern crate sha2;
-extern crate tokio;
+use std::convert::TryInto;
+
+use tokio::sync::oneshot::{channel, Receiver, Sender};
 
 use crate::proto::ctap1::Ctap1RegisteredKey;
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1RegisterResponse};
@@ -13,8 +12,6 @@ use crate::ops::webauthn::{GetAssertionResponse, MakeCredentialResponse};
 use crate::ops::u2f::{RegisterRequest, SignRequest};
 use crate::ops::u2f::{RegisterResponse, SignResponse};
 
-use tokio::sync::oneshot::{channel, Receiver, Sender};
-
 use crate::proto::ctap1::apdu::ApduResponse;
 use crate::proto::CtapError;
 use crate::transport::error::Error;
@@ -23,7 +20,6 @@ use authenticator::{
     AuthenticatorTransports, Error as MozillaU2FError, KeyHandle, RegisterFlags, SignFlags,
     U2FManager,
 };
-use std::convert::TryInto;
 
 impl Ctap1RegisteredKey {
     fn to_key_handle(&self) -> KeyHandle {
