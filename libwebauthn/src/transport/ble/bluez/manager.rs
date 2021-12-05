@@ -211,7 +211,7 @@ fn control_point_length(session: &BluetoothSession, endpoints: &Endpoints) -> Re
     Ok(max_fragment_size)
 }
 
-#[instrument(level = Level::DEBUG, skip_all, fields(dev = %target.alias))]
+#[instrument(level = Level::DEBUG, skip_all)]
 fn connect(session: &BluetoothSession, target: &Device) -> Result<(), Error> {
     let device = BluetoothDevice::new(session, target.path.clone());
     if !device.is_paired().or(Err(Error::Unavailable))? {

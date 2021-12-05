@@ -1,7 +1,7 @@
 use std::convert::TryInto;
+use std::error::Error;
 use std::time::Duration;
 
-use tracing::info;
 use tracing_subscriber::{self, EnvFilter};
 
 use libwebauthn::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
@@ -16,15 +16,19 @@ use libwebauthn::webauthn::{WebAuthn, WebAuthnManager};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-#[tokio::main]
-pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn setup_logging() {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .without_time()
         .init();
+}
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn Error>> {
+    setup_logging();
 
     let devices = list_devices().await.unwrap();
-    info!("Devices found: {:?}", devices);
+    println!("Devices found: {:?}", devices);
 
     let challenge = base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
     let pin_provider = StaticPinProvider::new("12312");
@@ -59,7 +63,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .make_credential(&mut device, &make_credentials_request)
             .await
             .unwrap();
-        info!("WebAuthn MakeCredential response: {:?}", response);
+        println!("WebAuthn MakeCredential response: {:?}", response);
 
         let credential: Ctap2PublicKeyCredentialDescriptor = (&response).try_into().unwrap();
         let get_assertion = GetAssertionRequest {
@@ -75,7 +79,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .get_assertion(&mut device, &get_assertion)
             .await
             .unwrap();
-        info!("WebAuthn GetAssertion response: {:?}", response);
+        println!("WebAuthn GetAssertion response: {:?}", response);
     }
 
     Ok(())

@@ -68,27 +68,13 @@ impl Into<BlueZFidoDevice> for &BleFidoDevice {
 
 impl fmt::Display for BleFidoDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:} ({:}, {:})",
-            self.alias(),
-            if self.is_connected() {
-                "connected"
-            } else {
-                "not connected"
-            },
-            if self.is_paired() {
-                "paired"
-            } else {
-                "unpaired"
-            }
-        )
+        write!(f, "{}", self.alias())
     }
 }
 
 #[async_trait]
 impl FidoDevice for BleFidoDevice {
-    #[instrument]
+    #[instrument(skip_all)]
     async fn supported_protocols(&mut self) -> Result<SupportedProtocols, Error> {
         let revisions = match self.revisions {
             None => {
