@@ -1,65 +1,53 @@
-use std::fmt::Display;
-use std::marker::PhantomData;
-
 use async_trait::async_trait;
-use tracing::instrument;
-
-use crate::proto::ctap1::{Ctap1, Ctap1Protocol};
-use crate::transport::device::FidoDevice;
-
-use crate::ops::u2f::{RegisterRequest, SignRequest};
-use crate::ops::u2f::{RegisterResponse, SignResponse};
+use tracing::{instrument, warn};
 
 use crate::fido::FidoProtocol;
+use crate::ops::u2f::{RegisterRequest, SignRequest};
+use crate::ops::u2f::{RegisterResponse, SignResponse};
+use crate::proto::ctap1::Ctap1;
 use crate::transport::error::{Error, TransportError};
+use crate::transport::Channel;
 
 #[async_trait]
-pub trait U2F<T> {
-    async fn register(device: &mut T, op: &RegisterRequest) -> Result<RegisterResponse, Error>;
-    async fn sign(device: &mut T, op: &SignRequest) -> Result<SignResponse, Error>;
-}
-
-pub struct U2FManager<T> {
-    device_type: PhantomData<T>,
+pub trait U2F {
+    async fn u2f_negotiate_protocol(&mut self) -> Result<FidoProtocol, Error>;
+    async fn u2f_register(&mut self, op: &RegisterRequest) -> Result<RegisterResponse, Error>;
+    async fn u2f_sign(&mut self, op: &SignRequest) -> Result<SignResponse, Error>;
 }
 
 #[async_trait]
-impl<T> U2F<T> for U2FManager<T>
+impl<C> U2F for C
 where
-    T: FidoDevice + Send + Display,
-{
-    #[instrument(skip_all, fields(dev = %device))]
-    async fn register(device: &mut T, op: &RegisterRequest) -> Result<RegisterResponse, Error> {
-        let protocol = U2FManager::negotiate_u2f_protocol(device).await?;
-        match protocol {
-            FidoProtocol::U2F => Ctap1Protocol::register(device, op).await,
-            _ => Err(Error::Transport(TransportError::NegotiationFailed)),
-        }
-    }
-
-    #[instrument(skip_all, fields(dev = %device))]
-    async fn sign(device: &mut T, op: &SignRequest) -> Result<SignResponse, Error> {
-        let protocol = U2FManager::negotiate_u2f_protocol(device).await?;
-
-        match protocol {
-            FidoProtocol::U2F => Ctap1Protocol::sign(device, op).await,
-            _ => Err(Error::Transport(TransportError::NegotiationFailed)),
-        }
-    }
-}
-
-impl<T> U2FManager<T>
-where
-    T: FidoDevice + Send + Display,
+    C: Channel,
 {
     #[instrument(skip_all)]
-    async fn negotiate_u2f_protocol(device: &mut T) -> Result<FidoProtocol, Error> {
-        let supported = device.supported_protocols().await?;
+    async fn u2f_negotiate_protocol(&mut self) -> Result<FidoProtocol, Error> {
+        let supported = self.supported_protocols().await?;
         if !supported.u2f && !supported.fido2 {
+            warn!("Negotiation failed: channel doesn't support U2F nor FIDO2");
             return Err(Error::Transport(TransportError::NegotiationFailed));
         }
         // Ensure CTAP1 version is reported correctly.
-        Ctap1Protocol::version(device).await?;
-        Ok(FidoProtocol::U2F)
+        self.ctap1_version().await?;
+        let selected = FidoProtocol::U2F;
+        Ok(selected)
+    }
+
+    #[instrument(skip_all, fields(dev = %self))]
+    async fn u2f_register(&mut self, op: &RegisterRequest) -> Result<RegisterResponse, Error> {
+        let protocol = self.u2f_negotiate_protocol().await?;
+        match protocol {
+            FidoProtocol::U2F => self.ctap1_register(op).await,
+            _ => Err(Error::Transport(TransportError::NegotiationFailed)),
+        }
+    }
+
+    #[instrument(skip_all, fields(dev = %self))]
+    async fn u2f_sign(&mut self, op: &SignRequest) -> Result<SignResponse, Error> {
+        let protocol = self.u2f_negotiate_protocol().await?;
+        match protocol {
+            FidoProtocol::U2F => self.ctap1_sign(op).await,
+            _ => Err(Error::Transport(TransportError::NegotiationFailed)),
+        }
     }
 }

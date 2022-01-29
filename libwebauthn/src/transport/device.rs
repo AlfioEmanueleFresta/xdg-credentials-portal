@@ -1,32 +1,73 @@
-use std::time::Duration;
+use std::fmt::Display;
 
+use crate::fido::FidoRevision;
 use async_trait::async_trait;
 
-use crate::proto::{
-    ctap1::apdu::{ApduRequest, ApduResponse},
-    ctap2::cbor::{CborRequest, CborResponse},
-};
+use crate::transport::ble::bluez::manager::SupportedRevisions;
 use crate::transport::error::Error;
 
-#[derive(Debug, Copy, Clone)]
+use super::{Channel, Transport};
+
+#[async_trait]
+pub trait Device<'d, T, C>: Send + Display
+where
+    T: Transport,
+    C: Channel + 'd,
+{
+    async fn channel(&'d mut self) -> Result<C, Error>;
+    async fn supported_protocols(&mut self) -> Result<SupportedProtocols, Error>;
+}
+
+/*
+pub struct BleDevice {}
+
+impl<C> Device<Ble, C> for BleDevice
+where
+    C: Channel,
+{
+    fn channel(&self) -> C {
+        todo!()
+    }
+}
+*/
+
+#[derive(Debug, Copy, Clone, Default)]
 pub struct SupportedProtocols {
     pub u2f: bool, // Can be split into U2F revisions, if needed.
     pub fido2: bool,
 }
 
-#[async_trait]
-pub trait FidoDevice {
-    async fn supported_protocols(&mut self) -> Result<SupportedProtocols, Error>;
+impl SupportedProtocols {
+    pub fn u2f_only() -> Self {
+        Self {
+            u2f: true,
+            ..SupportedProtocols::default()
+        }
+    }
 
-    async fn send_apdu_request(
-        &mut self,
-        _: &ApduRequest,
-        _: Duration,
-    ) -> Result<ApduResponse, Error>;
+    pub fn fido2_only() -> Self {
+        Self {
+            fido2: true,
+            ..SupportedProtocols::default()
+        }
+    }
+}
 
-    async fn send_cbor_request(
-        &mut self,
-        _: &CborRequest,
-        _: Duration,
-    ) -> Result<CborResponse, Error>;
+impl From<SupportedRevisions> for SupportedProtocols {
+    fn from(revs: SupportedRevisions) -> Self {
+        Self {
+            u2f: revs.u2fv11 || revs.u2fv12,
+            fido2: revs.v2,
+        }
+    }
+}
+
+impl From<FidoRevision> for SupportedProtocols {
+    fn from(rev: FidoRevision) -> Self {
+        match rev {
+            FidoRevision::V2 => SupportedProtocols::fido2_only(),
+            FidoRevision::U2fv12 => SupportedProtocols::u2f_only(),
+            FidoRevision::U2fv11 => SupportedProtocols::u2f_only(),
+        }
+    }
 }

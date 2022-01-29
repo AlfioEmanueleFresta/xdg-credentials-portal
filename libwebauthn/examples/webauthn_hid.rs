@@ -5,14 +5,14 @@ use std::time::Duration;
 use tracing_subscriber::{self, EnvFilter};
 
 use libwebauthn::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
-use libwebauthn::pin::StaticPinProvider;
 use libwebauthn::proto::ctap2::{
     Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialDescriptor,
     Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialType,
     Ctap2PublicKeyCredentialUserEntity,
 };
 use libwebauthn::transport::hid::list_devices;
-use libwebauthn::webauthn::{WebAuthn, WebAuthnManager};
+use libwebauthn::transport::Device;
+use libwebauthn::webauthn::WebAuthn;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -31,12 +31,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     println!("Devices found: {:?}", devices);
 
     let challenge = base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
-    let pin_provider = StaticPinProvider::new("12312");
-    let manager = WebAuthnManager::new(&pin_provider);
+    // let pin_provider = StaticPinProvider::new("12312");
+    // let manager = WebAuthnManager::new(&pin_provider);
 
     for mut device in devices {
         println!("Selected HID authenticator: {}", &device);
         device.wink(TIMEOUT).await?;
+
+        let mut channel = device.channel().await?;
 
         // Make Credentials ceremony
         let make_credentials_request = MakeCredentialRequest {
@@ -59,8 +61,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             timeout: TIMEOUT,
         };
 
-        let response = manager
-            .make_credential(&mut device, &make_credentials_request)
+        let response = channel
+            .webauthn_make_credential(&make_credentials_request)
             .await
             .unwrap();
         println!("WebAuthn MakeCredential response: {:?}", response);
@@ -75,8 +77,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             extensions_cbor: None,
             timeout: TIMEOUT,
         };
-        let response = manager
-            .get_assertion(&mut device, &get_assertion)
+        let response = channel
+            .webauthn_get_assertion(&get_assertion)
             .await
             .unwrap();
         println!("WebAuthn GetAssertion response: {:?}", response);

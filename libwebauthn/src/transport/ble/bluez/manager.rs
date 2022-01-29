@@ -84,7 +84,7 @@ pub async fn list_devices() -> Result<Vec<Device>, Error> {
 
 pub async fn supported_fido_revisions(target: &Device) -> Result<SupportedRevisions, Error> {
     let span = span!(Level::DEBUG, "supported_fido_revisions");
-    let target = target.clone();
+    let target = target.to_owned();
     tokio::task::spawn_blocking(move || {
         let _enter = span.enter();
         supported_fido_revisions_blocking(&target)
@@ -93,22 +93,49 @@ pub async fn supported_fido_revisions(target: &Device) -> Result<SupportedRevisi
     .unwrap()
 }
 
-pub async fn request(
-    device: &Device,
-    revision: &FidoRevision,
-    frame: &Frame,
-    timeout: Duration,
-) -> Result<Frame, Error> {
-    let span = span!(Level::DEBUG, "request");
-    let device = device.clone();
-    let revision = revision.clone();
-    let frame = frame.clone();
+pub async fn connect(device: &Device, revision: &FidoRevision) -> Result<Connection, Error> {
+    let span = span!(Level::DEBUG, "connect");
+    let device = device.to_owned();
+    let revision = revision.to_owned();
     tokio::task::spawn_blocking(move || {
         let _enter = span.enter();
-        request_blocking(&device, &revision, &frame, timeout)
+        connect_blocking(&device, &revision)
     })
     .await
     .unwrap()
+}
+
+pub async fn frame_send(
+    connection: &Connection,
+    frame: &Frame,
+    timeout: Duration,
+) -> Result<(), Error> {
+    let span = span!(Level::DEBUG, "frame_send");
+    // tokio::task::block_in_place(|| {
+    let _enter = span.enter();
+    frame_send_blocking(connection, frame, timeout)
+    //})
+}
+
+pub async fn frame_recv(connection: &Connection, timeout: Duration) -> Result<Frame, Error> {
+    let span = span!(Level::DEBUG, "frame_recv");
+    // tokio::task::block_in_place(|| {
+    let _enter = span.enter();
+    frame_recv_blocking(connection, timeout)
+    // })
+}
+
+pub async fn notify_start(connection: &Connection) -> Result<(), Error> {
+    let span = span!(Level::DEBUG, "notify_start");
+    tokio::task::block_in_place(|| {
+        let _enter = span.enter();
+        notify_start_blocking(connection)
+    })
+}
+
+#[instrument(skip_all)]
+pub fn notify_stop(connection: &Connection) -> Result<(), Error> {
+    notify_stop_blocking(connection)
 }
 
 fn start_discovery_blocking() -> Result<(), Error> {
@@ -154,27 +181,38 @@ fn list_devices_blocking() -> Result<Vec<Device>, Error> {
     Ok(devices)
 }
 
-fn request_blocking(
-    device: &Device,
-    revision: &FidoRevision,
-    frame: &Frame,
-    timeout: Duration,
-) -> Result<Frame, Error> {
+#[derive(Debug)]
+pub struct Connection {
+    session: BluetoothSession,
+    endpoints: Endpoints,
+}
+
+unsafe impl Send for Connection {}
+unsafe impl Sync for Connection {}
+
+fn connect_blocking(device: &Device, revision: &FidoRevision) -> Result<Connection, Error> {
     let session = BluetoothSession::create_session(None).or(Err(Error::Unavailable))?;
-    connect(&session, device)?;
+    connect_and_pair(&session, device)?;
     let endpoints = discover_services(&session, device)?;
-    let status = BluetoothGATTCharacteristic::new(&session, endpoints.status.clone());
     select_fido_revision(&session, &endpoints, revision)?;
 
-    status.start_notify().or(Err(Error::OperationFailed))?;
-    debug!("Registered for notifications on FIDO status endpoint");
+    Ok(Connection { session, endpoints })
+}
 
-    let max_fragment_size = control_point_length(&session, &endpoints)?;
+fn frame_send_blocking(
+    connection: &Connection,
+    frame: &Frame,
+    _timeout: Duration,
+) -> Result<(), Error> {
+    let max_fragment_size = control_point_length(&connection.session, &connection.endpoints)?;
     let fragments = frame
         .fragments(max_fragment_size)
         .or(Err(Error::InvalidFraming))?;
 
-    let control_point = BluetoothGATTCharacteristic::new(&session, endpoints.control_point.clone());
+    let control_point = BluetoothGATTCharacteristic::new(
+        &connection.session,
+        connection.endpoints.control_point.clone(),
+    );
     for (i, fragment) in fragments.into_iter().enumerate() {
         debug!({ fragment = i, len = fragment.len() }, "Sending fragment");
         trace!(?fragment);
@@ -184,10 +222,27 @@ fn request_blocking(
             .or(Err(Error::OperationFailed))?;
     }
 
-    let frame = wait_for_response(&session, &endpoints, timeout)?;
+    Ok(())
+}
+
+fn notify_start_blocking(connection: &Connection) -> Result<(), Error> {
+    let status =
+        BluetoothGATTCharacteristic::new(&connection.session, connection.endpoints.status.clone());
+    status.start_notify().or(Err(Error::OperationFailed))?;
+    debug!("Registered for notifications on FIDO status endpoint");
+    Ok(())
+}
+
+fn notify_stop_blocking(connection: &Connection) -> Result<(), Error> {
+    let status =
+        BluetoothGATTCharacteristic::new(&connection.session, connection.endpoints.status.clone());
     status.stop_notify().or(Err(Error::OperationFailed))?;
     debug!("Unregistered for notifications");
+    Ok(())
+}
 
+fn frame_recv_blocking(connection: &Connection, timeout: Duration) -> Result<Frame, Error> {
+    let frame = wait_for_response(&connection.session, &connection.endpoints, timeout)?;
     Ok(frame)
 }
 
@@ -212,7 +267,7 @@ fn control_point_length(session: &BluetoothSession, endpoints: &Endpoints) -> Re
 }
 
 #[instrument(level = Level::DEBUG, skip_all)]
-fn connect(session: &BluetoothSession, target: &Device) -> Result<(), Error> {
+fn connect_and_pair(session: &BluetoothSession, target: &Device) -> Result<(), Error> {
     let device = BluetoothDevice::new(session, target.path.clone());
     if !device.is_paired().or(Err(Error::Unavailable))? {
         info!("Sending pairing required to target device");
@@ -281,7 +336,7 @@ fn discover_services(session: &BluetoothSession, target: &Device) -> Result<Endp
 
 fn supported_fido_revisions_blocking(target: &Device) -> Result<SupportedRevisions, Error> {
     let session = BluetoothSession::create_session(None).or(Err(Error::Unavailable))?;
-    connect(&session, &target)?;
+    connect_and_pair(&session, target)?;
     let endpoints = discover_services(&session, target)?;
 
     // https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#ble-protocol-overview

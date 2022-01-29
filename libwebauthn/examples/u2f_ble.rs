@@ -5,7 +5,8 @@ use tracing_subscriber::{self, EnvFilter};
 
 use libwebauthn::ops::u2f::{RegisterRequest, SignRequest};
 use libwebauthn::transport::ble::list_devices;
-use libwebauthn::u2f::{U2FManager, U2F};
+use libwebauthn::transport::Device;
+use libwebauthn::u2f::U2F;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -24,6 +25,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     println!("Found {} devices.", devices.len());
 
     for mut device in devices {
+        let mut channel = device.channel().await?;
+
         const APP_ID: &str = "https://foo.example.org";
         let challenge: &[u8] =
             &base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
@@ -31,7 +34,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         println!("Registration request sent (timeout: {:?}).", TIMEOUT);
         let register_request =
             RegisterRequest::new_u2f_v2(&APP_ID, &challenge, vec![], TIMEOUT, false);
-        let response = U2FManager::register(&mut device, &register_request).await?;
+        let response = channel.u2f_register(&register_request).await?;
         println!("Response: {:?}", response);
 
         // Signature ceremony
@@ -39,7 +42,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         let new_key = response.as_registered_key()?;
         let sign_request =
             SignRequest::new(&APP_ID, &challenge, &new_key.key_handle, TIMEOUT, true);
-        let response = U2FManager::sign(&mut device, &sign_request).await?;
+        let response = channel.u2f_sign(&sign_request).await?;
         println!("Response: {:?}", response);
     }
 

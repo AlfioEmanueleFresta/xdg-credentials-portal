@@ -10,4 +10,4 @@ pub use self::model::{Ctap1RegisterRequest, Ctap1RegisterResponse};
 pub use self::model::{Ctap1SignRequest, Ctap1SignResponse};
 pub use self::model::{Ctap1VersionRequest, Ctap1VersionResponse};
 
-pub use self::protocol::{Ctap1, Ctap1Protocol};
+pub use self::protocol::Ctap1;

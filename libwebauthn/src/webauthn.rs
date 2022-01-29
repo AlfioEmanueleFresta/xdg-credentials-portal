@@ -1,106 +1,90 @@
 use std::convert::TryInto;
-use std::fmt::Display;
-use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use tracing::{debug, info, instrument, trace, warn};
-
-use crate::ops::webauthn::{GetAssertionRequest, GetAssertionResponse};
-use crate::ops::webauthn::{MakeCredentialRequest, MakeCredentialResponse};
-use crate::pin::PinProvider;
-use crate::pin::PinUvAuthToken;
-use crate::{
-    ops::u2f::{RegisterRequest, SignRequest},
-    proto::ctap2::Ctap2GetInfoResponse,
-};
-
-use crate::proto::ctap1::{Ctap1, Ctap1Protocol};
-use crate::proto::ctap2::Ctap2DowngradeCheck;
-use crate::proto::ctap2::{
-    Ctap2, Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest, Ctap2Protocol,
-};
+use tracing::{info, instrument, trace, warn};
 
 use crate::fido::FidoProtocol;
-
-use crate::transport::device::FidoDevice;
+use crate::ops::u2f::{RegisterRequest, SignRequest};
+use crate::ops::webauthn::{GetAssertionRequest, GetAssertionResponse};
+use crate::ops::webauthn::{MakeCredentialRequest, MakeCredentialResponse};
+use crate::proto::ctap1::Ctap1;
+use crate::proto::ctap2::{
+    Ctap2, Ctap2DowngradeCheck, Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest,
+};
 use crate::transport::error::{CtapError, Error, TransportError};
+use crate::transport::Channel;
 
 #[async_trait]
-pub trait WebAuthn<T> {
-    async fn make_credential(
-        &self,
-        device: &mut T,
+pub trait WebAuthn {
+    async fn webauthn_make_credential(
+        &mut self,
         op: &MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error>;
-    async fn get_assertion(
-        &self,
-        device: &mut T,
+    async fn webauthn_get_assertion(
+        &mut self,
         op: &GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error>;
-}
 
-pub struct WebAuthnManager<'a, T, P: 'a> {
-    device_type: PhantomData<T>,
-    #[allow(dead_code)]
-    pin_provider: &'a P,
+    async fn _webauthn_make_credential_fido2(
+        &mut self,
+        op: &MakeCredentialRequest,
+    ) -> Result<MakeCredentialResponse, Error>;
+    async fn _webauthn_make_credential_u2f(
+        &mut self,
+        op: &MakeCredentialRequest,
+    ) -> Result<MakeCredentialResponse, Error>;
+
+    async fn _webauthn_get_assertion_fido2(
+        &mut self,
+        op: &GetAssertionRequest,
+    ) -> Result<GetAssertionResponse, Error>;
+    async fn _webauthn_get_assertion_u2f(
+        &mut self,
+        op: &GetAssertionRequest,
+    ) -> Result<GetAssertionResponse, Error>;
+
+    async fn _negotiate_protocol(&mut self, allow_u2f: bool) -> Result<FidoProtocol, Error>;
 }
 
 #[async_trait]
-impl<'a, T, P: 'a> WebAuthn<T> for WebAuthnManager<'a, T, P>
+impl<C> WebAuthn for C
 where
-    T: FidoDevice + Send + Sync + Display,
-    P: PinProvider + Send + Sync,
+    C: Channel,
 {
-    #[instrument(skip_all, fields(dev = %device))]
-    async fn make_credential(
-        &self,
-        device: &mut T,
+    #[instrument(skip_all, fields(dev = %self))]
+    async fn webauthn_make_credential(
+        &mut self,
         op: &MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
         trace!(?op, "WebAuthn MakeCredential request");
         let ctap2_request: &Ctap2MakeCredentialRequest = &op.into();
         let protocol = self
-            .negotiate_protocol(device, ctap2_request.is_downgradable())
+            ._negotiate_protocol(ctap2_request.is_downgradable())
             .await?;
         match protocol {
-            FidoProtocol::FIDO2 => self.make_credential_fido2(device, op).await,
-            FidoProtocol::U2F => self.make_credential_u2f(device, op).await,
+            FidoProtocol::FIDO2 => self._webauthn_make_credential_fido2(op).await,
+            FidoProtocol::U2F => self._webauthn_make_credential_u2f(op).await,
         }
     }
 
-    #[instrument(skip_all, fields(dev = %device))]
-    async fn get_assertion(
-        &self,
-        device: &mut T,
+    #[instrument(skip_all, fields(dev = %self))]
+    async fn webauthn_get_assertion(
+        &mut self,
         op: &GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error> {
         trace!(?op, "WebAuthn GetAssertion request");
         let ctap2_request: &Ctap2GetAssertionRequest = &op.into();
         let protocol = self
-            .negotiate_protocol(device, ctap2_request.is_downgradable())
+            ._negotiate_protocol(ctap2_request.is_downgradable())
             .await?;
         match protocol {
-            FidoProtocol::FIDO2 => self.get_assertion_fido2(device, op).await,
-            FidoProtocol::U2F => self.get_assertion_u2f(device, op).await,
-        }
-    }
-}
-
-impl<'a, T, P: 'a> WebAuthnManager<'a, T, P>
-where
-    T: FidoDevice + Send + Sync,
-    P: PinProvider + Send + Sync,
-{
-    pub fn new(pin_provider: &'a P) -> Self {
-        Self {
-            pin_provider: pin_provider,
-            device_type: PhantomData::<T>::default(),
+            FidoProtocol::FIDO2 => self._webauthn_get_assertion_fido2(op).await,
+            FidoProtocol::U2F => self._webauthn_get_assertion_u2f(op).await,
         }
     }
 
-    async fn make_credential_fido2(
-        &self,
-        device: &mut T,
+    async fn _webauthn_make_credential_fido2(
+        &mut self,
         op: &MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
         let ctap2_request: Ctap2MakeCredentialRequest = op.into();
@@ -108,51 +92,49 @@ where
         //self.make_credential_pin_auth(device, &mut ctap2_request, &get_info)
         //    .await?;
 
-        Ctap2Protocol::make_credential(device, &ctap2_request, op.timeout).await
+        self.ctap2_make_credential(&ctap2_request, op.timeout).await
     }
 
-    async fn make_credential_u2f(
-        &self,
-        device: &mut T,
+    async fn _webauthn_make_credential_u2f(
+        &mut self,
         op: &MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
         let ctap2_request: &Ctap2MakeCredentialRequest = &op.into();
         let register_request: RegisterRequest = ctap2_request
             .try_into()
             .or(Err(TransportError::NegotiationFailed))?;
-        Ctap1Protocol::register(device, &register_request)
+        self.ctap1_register(&register_request)
             .await?
             .try_into()
             .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
     }
 
-    async fn get_assertion_fido2(
-        &self,
-        device: &mut T,
+    async fn _webauthn_get_assertion_fido2(
+        &mut self,
         op: &GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error> {
         let ctap2_request: Ctap2GetAssertionRequest = op.into();
-        Ctap2Protocol::get_assertion(device, &ctap2_request, op.timeout).await
+        self.ctap2_get_assertion(&ctap2_request, op.timeout).await
     }
 
-    async fn get_assertion_u2f(
-        &self,
-        device: &mut T,
+    async fn _webauthn_get_assertion_u2f(
+        &mut self,
         op: &GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error> {
         let ctap2_request: &Ctap2GetAssertionRequest = &op.into();
         let sign_request: SignRequest = ctap2_request
             .try_into()
             .or(Err(TransportError::NegotiationFailed))?;
-        Ctap1Protocol::sign(device, &sign_request)
+        self.ctap1_sign(&sign_request)
             .await?
             .try_into()
             .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
     }
 
+    /*
     async fn _make_credential_pin_auth(
         &self,
-        _device: &mut T,
+        _device: &'d mut D,
         request: &mut Ctap2MakeCredentialRequest,
         get_info_response: &Ctap2GetInfoResponse,
     ) -> Result<(), Error> {
@@ -181,19 +163,11 @@ where
             }
         }
     }
-
-    async fn _get_pin_token(&self, _device: &mut T) -> Result<PinUvAuthToken, Error> {
-        let _pin = self.pin_provider.provide_pin(None).await;
-        todo!()
-    }
+    */
 
     #[instrument(skip_all)]
-    async fn negotiate_protocol(
-        &self,
-        device: &mut T,
-        allow_u2f: bool,
-    ) -> Result<FidoProtocol, Error> {
-        let supported = device.supported_protocols().await?;
+    async fn _negotiate_protocol(&mut self, allow_u2f: bool) -> Result<FidoProtocol, Error> {
+        let supported = self.supported_protocols().await?;
         if !supported.u2f && !supported.fido2 {
             return Err(Error::Transport(TransportError::NegotiationFailed));
         }
@@ -206,7 +180,7 @@ where
             FidoProtocol::FIDO2
         } else {
             // Ensure CTAP1 version is reported correctly.
-            Ctap1Protocol::version(device).await?;
+            self.ctap1_version().await?;
             FidoProtocol::U2F
         };
 

@@ -4,7 +4,7 @@ pub enum FidoProtocol {
     U2F,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 #[repr(u8)]
 pub enum FidoRevision {
     V2 = 0x20,
