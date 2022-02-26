@@ -42,6 +42,10 @@ where
         let cbor_request = CborRequest::new(Ctap2CommandCode::AuthenticatorGetInfo);
         self.cbor_send(&cbor_request, TIMEOUT_GET_INFO).await?;
         let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
+        match cbor_response.status_code {
+            CtapError::Ok => (),
+            error => return Err(Error::Ctap(error)),
+        };
         let ctap_response: Ctap2GetInfoResponse = from_slice(&cbor_response.data.unwrap()).unwrap();
         info!("CTAP2 GetInfo response: {:?}", ctap_response);
         Ok(ctap_response)
@@ -56,6 +60,10 @@ where
         trace!(?request);
         self.cbor_send(&request.into(), TIMEOUT_GET_INFO).await?;
         let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
+        match cbor_response.status_code {
+            CtapError::Ok => (),
+            error => return Err(Error::Ctap(error)),
+        };
         let ctap_response: Ctap2MakeCredentialResponse =
             from_slice(&cbor_response.data.unwrap()).unwrap();
         info!(?ctap_response, "CTAP2 MakeCredential response");

@@ -179,22 +179,22 @@ pub struct Ctap2MakeCredentialOptions {
     pub require_resident_key: Option<bool>,
 
     #[serde(rename = "uv")]
-    #[serde(skip_serializing_if = "Self::skip_serializing_uv")]
-    pub deprecated_require_user_verification: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deprecated_require_user_verification: Option<bool>,
 }
 
 impl Default for Ctap2MakeCredentialOptions {
     fn default() -> Self {
         Self {
             require_resident_key: None,
-            deprecated_require_user_verification: false,
+            deprecated_require_user_verification: None,
         }
     }
 }
 
 impl Ctap2MakeCredentialOptions {
-    fn skip_serializing_uv(uv: &bool) -> bool {
-        !uv
+    pub fn skip_serializing(&self) -> bool {
+        self.require_resident_key.is_none() && self.deprecated_require_user_verification.is_none()
     }
 }
 
@@ -289,7 +289,7 @@ pub struct Ctap2MakeCredentialRequest {
     pub extensions_cbor: Option<Vec<u8>>,
 
     /// options (0x07)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Self::skip_serializing_options")]
     pub options: Option<Ctap2MakeCredentialOptions>,
 
     /// pinUvAuthParam (0x08)
@@ -322,6 +322,21 @@ impl Ctap2MakeCredentialRequest {
             enterprise_attestation: None,
         }
     }
+
+    /// Check is the relying party prefers UV to be enforced:
+    ///   "[...] the Relying Party prefers enforcing user verification (e.g., by setting
+    ///   options.authenticatorSelection.userVerification to "required", or "preferred" in the WebAuthn API) [...]"
+    pub fn is_uv_preferred(&self) -> bool {
+        self.options.map_or(false, |options| {
+            options
+                .deprecated_require_user_verification
+                .unwrap_or(false)
+        }) || self.pin_auth_param.is_some()
+    }
+
+    pub fn skip_serializing_options(options: &Option<Ctap2MakeCredentialOptions>) -> bool {
+        options.map_or(true, |options| options.skip_serializing())
+    }
 }
 
 impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
@@ -343,7 +358,7 @@ impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
                 } else {
                     None
                 },
-                deprecated_require_user_verification: false,
+                deprecated_require_user_verification: None,
             }),
             pin_auth_param: None,
             pin_auth_proto: None,
@@ -534,6 +549,15 @@ impl Ctap2GetInfoResponse {
 
     pub fn supports_fido_2_1(&self) -> bool {
         self.versions.iter().any(|v| v == "FIDO_2_1")
+    }
+
+    /// Implements check for "Protected by some form of User Verification":
+    ///   Either or both clientPin or built-in user verification methods are supported and enabled.
+    ///   I.e., in the authenticatorGetInfo response the pinUvAuthToken option ID is present and set to true,
+    ///   and either clientPin option ID is present and set to true or uv option ID is present and set to true or both.
+    pub fn is_uv_protected(&self) -> bool {
+        self.option_enabled("pinUvAuthToken")
+            && (self.option_enabled("clientPin") || self.option_enabled("uv"))
     }
 }
 

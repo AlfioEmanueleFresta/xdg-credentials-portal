@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use async_trait::async_trait;
-use tracing::{info, instrument, trace, warn};
+use tracing::{debug, info, instrument, trace, warn};
 
 use crate::fido::FidoProtocol;
 use crate::ops::u2f::{RegisterRequest, SignRequest};
@@ -24,7 +24,6 @@ pub trait WebAuthn {
         &mut self,
         op: &GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error>;
-
     async fn _webauthn_make_credential_fido2(
         &mut self,
         op: &MakeCredentialRequest,
@@ -89,8 +88,45 @@ where
     ) -> Result<MakeCredentialResponse, Error> {
         let ctap2_request: Ctap2MakeCredentialRequest = op.into();
 
-        //self.make_credential_pin_auth(device, &mut ctap2_request, &get_info)
-        //    .await?;
+        let get_info_response = self.ctap2_get_info().await?;
+
+        let rp_uv_preferred = ctap2_request.is_uv_preferred();
+        let dev_uv_protected = get_info_response.is_uv_protected();
+        let uv = rp_uv_preferred || dev_uv_protected;
+        debug!(%rp_uv_preferred, %dev_uv_protected, %uv, "Checking if user verification is required");
+
+        /*
+        if get_info_response.option_enabled("uv") {
+            if get_info_response.option_enabled("pinUvAuthToken") {
+                todo!("getPinUvAuthTokenUsingUvWithPermissions")
+            } else {
+                debug!("Deprecated FIDO 2.0 behaviour: populating 'uv' flag");
+                ctap2_request.options = Some(Ctap2MakeCredentialOptions {
+                    deprecated_require_user_verification: true,
+                    ..ctap2_request.options.unwrap()
+                });
+            }
+        } else {
+            // !uv
+            if get_info_response.option_enabled("pinUvAuthToken") {
+                assert!(get_info_response.option_enabled("clientPin"));
+                todo!("getPinUvAuthTokenUsingPinWithPermissions")
+            } else {
+                // !pinUvAuthToken
+                assert!(get_info_response.option_enabled("clientPin"));
+                //let _token = self.get_pin_token(device).await?;
+                // TODO sesett pinUvAuthToken
+            }
+        }
+        */
+
+        if uv {
+            unimplemented!("user verification");
+        } else {
+            // No user-verification.
+            // ctap2_request.set_no_uv();
+            // Don't do this - Yubikeys will fail if value is explicitly set to false.
+        }
 
         self.ctap2_make_credential(&ctap2_request, op.timeout).await
     }
@@ -130,40 +166,6 @@ where
             .try_into()
             .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
     }
-
-    /*
-    async fn _make_credential_pin_auth(
-        &self,
-        _device: &'d mut D,
-        request: &mut Ctap2MakeCredentialRequest,
-        get_info_response: &Ctap2GetInfoResponse,
-    ) -> Result<(), Error> {
-        if get_info_response.option_enabled("uv") {
-            if get_info_response.option_enabled("pinUvAuthToken") {
-                todo!("getPinUvAuthTokenUsingUvWithPermissions")
-            } else {
-                debug!("Deprecated FIDO 2.0 behaviour: populating 'uv' flag");
-                request
-                    .options
-                    .unwrap()
-                    .deprecated_require_user_verification = true;
-                Ok(())
-            }
-        } else {
-            // !uv
-            if get_info_response.option_enabled("pinUvAuthToken") {
-                assert!(get_info_response.option_enabled("clientPin"));
-                todo!("getPinUvAuthTokenUsingPinWithPermissions")
-            } else {
-                // !pinUvAuthToken
-                assert!(get_info_response.option_enabled("clientPin"));
-                //let _token = self.get_pin_token(device).await?;
-                // TODO sesett pinUvAuthToken
-                Ok(())
-            }
-        }
-    }
-    */
 
     #[instrument(skip_all)]
     async fn _negotiate_protocol(&mut self, allow_u2f: bool) -> Result<FidoProtocol, Error> {

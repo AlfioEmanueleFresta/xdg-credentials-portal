@@ -67,14 +67,14 @@ impl<'d> HidChannel<'d> {
             },
             init: InitResponse::default(),
         };
-        channel.init(INIT_TIMEOUT).await?;
+        channel.init = channel.init(INIT_TIMEOUT).await?;
         Ok(channel)
     }
 
     #[instrument(skip_all)]
     pub async fn wink(&mut self, _timeout: Duration) -> Result<bool, Error> {
         if !self.init.caps.contains(Caps::WINK) {
-            warn!("WINK capability is not supported");
+            warn!(?self.init.caps, "WINK capability is not supported");
             return Ok(false);
         }
 
@@ -248,13 +248,26 @@ impl<'d> HidChannel<'d> {
 
     #[instrument(skip_all)]
     pub async fn hid_recv(&self, timeout: Duration) -> Result<HidMessage, Error> {
-        match &self.open_device {
-            OpenHidDevice::HidApiDevice(hidapi_device) => {
-                let guard = hidapi_device.lock().unwrap();
-                Self::hid_recv_hidapi(guard.deref(), timeout)
+        loop {
+            let response = match &self.open_device {
+                OpenHidDevice::HidApiDevice(hidapi_device) => {
+                    let guard = hidapi_device.lock().unwrap();
+                    Self::hid_recv_hidapi(guard.deref(), timeout)
+                }
+                #[cfg(feature = "virtual-hid-device")]
+                OpenHidDevice::VirtualDevice => Self::hid_recv_virtual(timeout).await,
+            };
+
+            match response {
+                Ok(HidMessage {
+                    cmd: HidCommand::KeepAlive,
+                    ..
+                }) => {
+                    debug!("Ignoring HID keep-alive");
+                    continue;
+                }
+                _ => break response,
             }
-            #[cfg(feature = "virtual-hid-device")]
-            OpenHidDevice::VirtualDevice => Self::hid_recv_virtual(timeout).await,
         }
     }
 
@@ -290,43 +303,46 @@ impl<'d> HidChannel<'d> {
             .await
             .or(Err(Error::Transport(TransportError::TransportUnavailable)))?;
 
-        let response = loop {
-            let mut parser = HidMessageParser::new();
-            loop {
-                let mut report = [0; PACKET_SIZE];
-                socket
-                    .recv_from(&mut report)
-                    .await
-                    .or(Err(Error::Transport(TransportError::ConnectionLost)))?;
-                debug!(
-                    { len = report.len() },
-                    "Received HID report from UDP virtual device"
-                );
-                trace!(?report);
+        let mut parser = HidMessageParser::new();
+        loop {
+            let mut report = [0; PACKET_SIZE];
+            socket
+                .recv_from(&mut report)
+                .await
+                .or(Err(Error::Transport(TransportError::ConnectionLost)))?;
+            debug!(
+                { len = report.len() },
+                "Received HID report from UDP virtual device"
+            );
+            trace!(?report);
 
-                if let HidMessageParserState::Done = parser
-                    .update(&report)
-                    .or(Err(Error::Transport(TransportError::InvalidFraming)))?
-                {
-                    break;
-                }
+            if let HidMessageParserState::Done = parser
+                .update(&report)
+                .or(Err(Error::Transport(TransportError::InvalidFraming)))?
+            {
+                break;
             }
+        }
 
-            let response = parser
-                .message()
-                .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
-            debug!({ cmd = ?response.cmd }, "Parsed U2F HID response from UDP virtual device");
-            trace!(?response);
+        let response = parser
+            .message()
+            .or(Err(Error::Transport(TransportError::InvalidFraming)))?;
+        debug!({ cmd = ?response.cmd }, "Parsed U2F HID response from UDP virtual device");
+        trace!(?response);
 
-            match response.cmd {
-                HidCommand::KeepAlive => {
-                    debug!("Ignoring HID keep-alive");
-                    continue;
-                }
-                _ => break response,
-            }
-        };
         Ok(response)
+    }
+}
+
+impl Drop for HidChannel<'_> {
+    #[instrument(level = Level::DEBUG, skip_all, fields(dev = %self.device))]
+    fn drop(&mut self) {
+        if let Err(err) = futures::executor::block_on(self.hid_cancel()) {
+            warn!(
+                ?err,
+                "Failed to send hid_cancel on the channel being dropped"
+            )
+        }
     }
 }
 

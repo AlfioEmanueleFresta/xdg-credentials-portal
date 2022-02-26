@@ -2,12 +2,12 @@ use std::convert::TryInto;
 use std::error::Error;
 use std::time::Duration;
 
+use rand::{thread_rng, Rng};
 use tracing_subscriber::{self, EnvFilter};
 
 use libwebauthn::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
 use libwebauthn::proto::ctap2::{
-    Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2PublicKeyCredentialDescriptor,
-    Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialType,
+    Ctap2CredentialType, Ctap2PublicKeyCredentialDescriptor, Ctap2PublicKeyCredentialRpEntity,
     Ctap2PublicKeyCredentialUserEntity,
 };
 use libwebauthn::transport::hid::list_devices;
@@ -30,7 +30,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let devices = list_devices().await.unwrap();
     println!("Devices found: {:?}", devices);
 
-    let challenge = base64_url::decode("1vQ9mxionq0ngCnjD-wTsv1zUSrGRtFqG2xP09SbZ70").unwrap();
+    let user_id: [u8; 32] = thread_rng().gen();
+    let challenge: [u8; 32] = thread_rng().gen();
+
     // let pin_provider = StaticPinProvider::new("12312");
     // let manager = WebAuthnManager::new(&pin_provider);
 
@@ -43,19 +45,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         // Make Credentials ceremony
         let make_credentials_request = MakeCredentialRequest {
             origin: "example.org".to_owned(),
-            hash: challenge.to_owned(),
+            hash: Vec::from(challenge),
             relying_party: Ctap2PublicKeyCredentialRpEntity::new("example.org", "example.org"),
-            user: Ctap2PublicKeyCredentialUserEntity::new(
-                &[32u8; 42],
-                "mario.rossi",
-                "Mario Rossi",
-            ),
+            user: Ctap2PublicKeyCredentialUserEntity::new(&user_id, "mario.rossi", "Mario Rossi"),
             require_resident_key: false,
             require_user_verification: false,
-            algorithms: vec![Ctap2CredentialType {
-                public_key_type: Ctap2PublicKeyCredentialType::PublicKey,
-                algorithm: Ctap2COSEAlgorithmIdentifier::ES256,
-            }],
+            algorithms: vec![Ctap2CredentialType::default()],
             exclude: None,
             extensions_cbor: vec![],
             timeout: TIMEOUT,
@@ -70,7 +65,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         let credential: Ctap2PublicKeyCredentialDescriptor = (&response).try_into().unwrap();
         let get_assertion = GetAssertionRequest {
             relying_party_id: "example.org".to_owned(),
-            hash: challenge.to_owned(),
+            hash: Vec::from(challenge),
             allow: vec![credential],
             require_user_presence: false,
             require_user_verification: false,

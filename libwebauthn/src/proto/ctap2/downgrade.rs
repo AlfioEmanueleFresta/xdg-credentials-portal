@@ -91,7 +91,7 @@ impl Ctap2DowngradeCheck<Ctap1RegisterRequest> for Ctap2MakeCredentialRequest {
             .all(|a| a.algorithm == Ctap2COSEAlgorithmIdentifier::ES256)
             && self.options.map_or(true, |options| {
                 !(options.require_resident_key.eq(&Some(true))
-                    || options.deprecated_require_user_verification)
+                    || options.deprecated_require_user_verification.eq(&Some(true)))
             })
     }
 }

@@ -3,6 +3,7 @@ use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use tracing::{error, warn};
 
 const BROADCAST_CID: u32 = 0xFFFFFFFF;
 const PACKET_INITIAL_HEADER_SIZE: usize = 7;
@@ -114,12 +115,17 @@ impl HidMessageParser {
         if (self.packets.len() == 0 && packet.len() < PACKET_INITIAL_HEADER_SIZE)
             || packet.len() < PACKET_CONT_HEADER_SIZE + 1
         {
+            error!("Packet length in invalid");
             return Err(IOError::new(
                 IOErrorKind::InvalidInput,
                 "Packet length is invalid",
             ));
         }
-        self.packets.push(Vec::from(packet));
+        if packet.iter().all(|&b| b == 0) {
+            warn!("Received unexpected packet of all zeroes, ignoring"); // ?!
+        } else {
+            self.packets.push(Vec::from(packet));
+        }
         return if self.more_packets_needed() {
             Ok(HidMessageParserState::MorePacketsExpected)
         } else {
