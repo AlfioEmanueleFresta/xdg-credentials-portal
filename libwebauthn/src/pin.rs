@@ -3,12 +3,13 @@ use super::transport::error::Error;
 use aes::cipher::{block_padding::NoPadding, BlockDecryptMut};
 use async_trait::async_trait;
 use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+use hkdf::Hkdf;
 use hmac::Mac;
 use p256::{
     ecdh::EphemeralSecret, elliptic_curve::sec1::FromEncodedPoint, EncodedPoint,
     PublicKey as P256PublicKey,
 };
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, thread_rng, Rng};
 use sha2::{Digest, Sha256};
 use tracing::{error, info, instrument, warn};
 use x509_parser::nom::AsBytes;
@@ -124,6 +125,21 @@ pub trait PinUvAuthProtocol: Send + Sync {
     fn authenticate(&self, key: &[u8], message: &[u8]) -> Vec<u8>;
 }
 
+trait ECPrivateKeyPinUvAuthProtocol {
+    fn private_key(&self) -> &EphemeralSecret;
+    fn public_key(&self) -> &P256PublicKey;
+    fn kdf(&self, bytes: &[u8]) -> Vec<u8>;
+}
+/// Common functionality between ECDH-based PIN/UV auth protocols (1 & 2)
+trait ECDHPinUvAuthProtocol {
+    fn ecdh(&self, peer_public_key: &cosey::PublicKey) -> Result<Vec<u8>, Error>;
+    fn encapsulate(
+        &self,
+        peer_public_key: &cosey::PublicKey,
+    ) -> Result<(cosey::PublicKey, Vec<u8>), Error>;
+    fn get_public_key(&self) -> cosey::PublicKey;
+}
+
 pub struct PinUvAuthProtocolOne {
     private_key: EphemeralSecret,
     public_key: P256PublicKey,
@@ -137,6 +153,40 @@ impl PinUvAuthProtocolOne {
             private_key,
             public_key,
         }
+    }
+}
+
+impl ECPrivateKeyPinUvAuthProtocol for PinUvAuthProtocolOne {
+    fn private_key(&self) -> &EphemeralSecret {
+        &self.private_key
+    }
+
+    fn public_key(&self) -> &P256PublicKey {
+        &self.public_key
+    }
+
+    /// kdf(Z) → sharedSecret
+    fn kdf(&self, bytes: &[u8]) -> Vec<u8> {
+        let mut hasher = Sha256::default();
+        hasher.update(bytes);
+        hasher.finalize().to_vec()
+    }
+}
+
+impl<P> ECDHPinUvAuthProtocol for P
+where
+    P: ECPrivateKeyPinUvAuthProtocol,
+{
+    #[instrument(skip_all)]
+    fn encapsulate(
+        &self,
+        peer_public_key: &cosey::PublicKey,
+    ) -> Result<(cosey::PublicKey, Vec<u8>), Error> {
+        // Let sharedSecret be the result of calling ecdh(peerCoseKey). Return any resulting error.
+        let shared_secret = self.ecdh(peer_public_key)?;
+
+        // Return(getPublicKey(), sharedSecret)
+        Ok((self.get_public_key(), shared_secret))
     }
 
     /// ecdh(peerCoseKey) → sharedSecret | error
@@ -159,22 +209,15 @@ impl PinUvAuthProtocolOne {
 
         // Calculate xY, the shared point. (I.e. the scalar-multiplication of the peer’s point, Y, with the
         // local private key agreement key.)
-        let shared = self.private_key.diffie_hellman(&peer_public_key);
+        let shared = self.private_key().diffie_hellman(&peer_public_key);
 
         // Return kdf(Z).
         Ok(self.kdf(shared.as_bytes().as_bytes()))
     }
 
-    /// kdf(Z) → sharedSecret
-    fn kdf(&self, bytes: &[u8]) -> Vec<u8> {
-        let mut hasher = Sha256::default();
-        hasher.update(bytes);
-        hasher.finalize().to_vec()
-    }
-
     /// getPublicKey()
     fn get_public_key(&self) -> cosey::PublicKey {
-        let point = EncodedPoint::from(self.public_key);
+        let point = EncodedPoint::from(self.public_key());
         let x: heapless::Vec<u8, 32> =
             heapless::Vec::from_slice(point.x().expect("Not the identity point").as_bytes())
                 .unwrap();
@@ -194,17 +237,6 @@ impl PinUvAuthProtocol for PinUvAuthProtocolOne {
     }
 
     #[instrument(skip_all)]
-    fn encapsulate(
-        &self,
-        peer_public_key: &cosey::PublicKey,
-    ) -> Result<(cosey::PublicKey, Vec<u8>), Error> {
-        // Let sharedSecret be the result of calling ecdh(peerCoseKey). Return any resulting error.
-        let shared_secret = self.ecdh(peer_public_key)?;
-
-        // Return(getPublicKey(), sharedSecret)
-        Ok((self.get_public_key(), shared_secret))
-    }
-
     fn encrypt(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Error> {
         // Return the AES-256-CBC encryption of demPlaintext using an all-zero IV.
         // (No padding is performed as the size of demPlaintext is required to be a multiple of the AES block length.)
@@ -216,12 +248,14 @@ impl PinUvAuthProtocol for PinUvAuthProtocolOne {
         Ok(enc.encrypt_padded_vec_mut::<NoPadding>(plaintext))
     }
 
+    #[instrument(skip_all)]
     fn authenticate(&self, key: &[u8], message: &[u8]) -> Vec<u8> {
         // Return the first 16 bytes of the result of computing HMAC-SHA-256 with the given key and message.
         let hmac = hmac_sha256(key, message);
         Vec::from(&hmac[..16])
     }
 
+    #[instrument(skip_all)]
     fn decrypt(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
         // If the size of demCiphertext is not a multiple of the AES block length, return error.
         // Otherwise return the AES-256-CBC decryption of demCiphertext using an all-zero IV.
@@ -244,6 +278,119 @@ impl PinUvAuthProtocol for PinUvAuthProtocolOne {
         };
         Ok(plaintext)
     }
+
+    fn encapsulate(
+        &self,
+        peer_public_key: &cosey::PublicKey,
+    ) -> Result<(cosey::PublicKey, Vec<u8>), Error> {
+        <Self as ECDHPinUvAuthProtocol>::encapsulate(self, peer_public_key)
+    }
+}
+
+pub struct PinUvAuthProtocolTwo {
+    private_key: EphemeralSecret,
+    public_key: P256PublicKey,
+}
+
+impl PinUvAuthProtocolTwo {
+    pub fn new() -> Self {
+        let private_key = EphemeralSecret::random(&mut OsRng);
+        let public_key = private_key.public_key();
+        Self {
+            private_key,
+            public_key,
+        }
+    }
+}
+
+impl ECPrivateKeyPinUvAuthProtocol for PinUvAuthProtocolTwo {
+    fn private_key(&self) -> &EphemeralSecret {
+        &self.private_key
+    }
+
+    fn public_key(&self) -> &P256PublicKey {
+        &self.public_key
+    }
+
+    /// kdf(Z) → sharedSecret
+    fn kdf(&self, ikm: &[u8]) -> Vec<u8> {
+        // Returns:
+        //   HKDF-SHA-256(salt = 32 zero bytes, IKM = Z, L = 32, info = "CTAP2 HMAC key") ||
+        //   HKDF-SHA-256(salt = 32 zero bytes, IKM = Z, L = 32, info = "CTAP2 AES key")
+        let salt: &[u8] = &[0u8; 32];
+        let mut output = hkdf_sha256(salt, ikm, "CTAP2 HMAC key".as_bytes());
+        output.extend(hkdf_sha256(salt, ikm, "CTAP2 AES key".as_bytes()));
+        output
+    }
+}
+
+impl PinUvAuthProtocol for PinUvAuthProtocolTwo {
+    fn version(&self) -> Ctap2PinUvAuthProtocol {
+        Ctap2PinUvAuthProtocol::Two
+    }
+
+    #[instrument(skip_all)]
+    fn encapsulate(
+        &self,
+        peer_public_key: &cosey::PublicKey,
+    ) -> Result<(cosey::PublicKey, Vec<u8>), Error> {
+        <Self as ECDHPinUvAuthProtocol>::encapsulate(self, peer_public_key)
+    }
+
+    fn encrypt(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Error> {
+        // Discard the first 32 bytes of key. (This selects the AES-key portion of the shared secret.)
+        let key = &key[32..];
+
+        // Let iv be a 16-byte, random bytestring.
+        let iv: [u8; 16] = thread_rng().gen();
+
+        // Let ct be the AES-256-CBC encryption of demPlaintext using key and iv.
+        // (No padding is performed as the size of demPlaintext is required to be a multiple of the AES block length.)
+        let Ok(enc) = Aes256CbcEncryptor::new_from_slices(key, &iv) else {
+            error!(?key, "Invalid key for AES-256 encryption");
+            return Err(Error::Ctap(CtapError::Other));
+        };
+        let ct = enc.encrypt_padded_vec_mut::<NoPadding>(plaintext);
+
+        // Return iv || ct.
+        let mut out = Vec::from(iv);
+        out.extend(ct);
+        Ok(out)
+    }
+
+    fn decrypt(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
+        // Discard the first 32 bytes of key. (This selects the AES-key portion of the shared secret.)
+        let key = &key[32..];
+
+        // If demPlaintext is less than 16 bytes in length, return an error
+        if ciphertext.len() < 16 {
+            error!({ len = ciphertext.len() }, "Invalid length for ciphertext");
+            return Err(Error::Ctap(CtapError::Other));
+        };
+
+        // Split demPlaintext after the 16th byte to produce two subspans, iv and ct.
+        let (iv, ciphertext) = ciphertext.split_at(16);
+
+        // Return the AES-256-CBC decryption of ct using key and iv.
+        let Ok(dec) = Aes256CbcDecryptor::new_from_slices(key, iv) else {
+            error!(?key, "Invalid key for AES-256 decryption");
+            return Err(Error::Ctap(CtapError::Other));
+        };
+        let Ok(plaintext) = dec.decrypt_padded_vec_mut::<NoPadding>(ciphertext) else {
+            error!("Unpad error while decrypting");
+            return Err(Error::Ctap(CtapError::Other));
+        };
+        Ok(plaintext)
+    }
+
+    fn authenticate(&self, key: &[u8], message: &[u8]) -> Vec<u8> {
+        // If key is longer than 32 bytes, discard the excess. (This selects the HMAC-key portion of the shared secret.
+        // When key is the pinUvAuthToken, it is exactly 32 bytes long and thus this step has no effect.)
+        let key = &key[..32];
+
+        // Return the result of computing HMAC-SHA-256 on key and message.
+        hmac_sha256(key, message)
+    }
 }
 
 /// hash(pin) -> LEFT(SHA-256(pin), 16)
@@ -258,4 +405,12 @@ pub fn hmac_sha256(key: &[u8], message: &[u8]) -> Vec<u8> {
     let mut hmac = HmacSha256::new_from_slice(key).expect("Any key size is valid");
     hmac.update(message);
     hmac.finalize().into_bytes().to_vec()
+}
+
+pub fn hkdf_sha256(salt: &[u8], ikm: &[u8], info: &[u8]) -> Vec<u8> {
+    let hk = Hkdf::<Sha256>::new(Some(salt), &ikm);
+    let mut okm = [0u8; 32]; // fixed L = 32
+    hk.expand(info, &mut okm)
+        .expect("32 is a valid length for Sha256 to output");
+    Vec::from(okm)
 }

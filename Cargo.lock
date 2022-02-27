@@ -696,6 +696,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hkdf"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "791a029f6b9fc27657f6f188ec6e5e43f6911f6f878e0dc5501396e09809d437"
+dependencies = [
+ "hmac 0.12.1",
+]
+
+[[package]]
 name = "hmac"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1771,6 +1780,7 @@ dependencies = [
  "heapless",
  "hex 0.4.3",
  "hidapi",
+ "hkdf",
  "hmac 0.12.1",
  "maplit",
  "mockall",

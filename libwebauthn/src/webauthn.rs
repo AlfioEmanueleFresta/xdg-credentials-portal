@@ -11,7 +11,9 @@ use crate::ops::webauthn::{
     GetAssertionRequest, GetAssertionResponse, UserVerificationRequirement,
 };
 use crate::ops::webauthn::{MakeCredentialRequest, MakeCredentialResponse};
-use crate::pin::{pin_hash, PinProvider, PinUvAuthProtocol, PinUvAuthProtocolOne};
+use crate::pin::{
+    pin_hash, PinProvider, PinUvAuthProtocol, PinUvAuthProtocolOne, PinUvAuthProtocolTwo,
+};
 use crate::proto::ctap1::Ctap1;
 use crate::proto::ctap2::{
     Ctap2, Ctap2ClientPinRequest, Ctap2DowngradeCheck, Ctap2GetAssertionRequest,
@@ -63,11 +65,12 @@ async fn select_uv_proto(
     for &protocol in get_info_response.pin_auth_protos.iter().flatten() {
         match protocol {
             1 => return Ok(Box::new(PinUvAuthProtocolOne::new())),
+            2 => return Ok(Box::new(PinUvAuthProtocolTwo::new())),
             _ => (),
         };
     }
 
-    error!("No supported PIN/UV auth protocols found");
+    error!(?get_info_response.pin_auth_protos, "No supported PIN/UV auth protocols found");
     return Err(Error::Ctap(CtapError::Other));
 }
 

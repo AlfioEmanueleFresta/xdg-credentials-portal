@@ -38,7 +38,7 @@ The project is composed of multiple crates:
   - 🟠 Planned ([#9][#9]): Support for excludeList and pre-flight requests
 - PIN/UV Protocols
   - 🟢 Implemented: PIN/UV Auth Protocol One
-  - 🟠 Planned ([#12][#12]): PIN/UV Auth Protocol Two
+  - 🟢 Implemented: PIN/UV Auth Protocol Two
 - PIN/UV Operations
   - 🟢 Implemented: GetPinToken
   - 🟢 Implemented: GetPinUvAuthTokenUsingPinWithPermissions
@@ -139,6 +139,5 @@ Alternatively, any investigation or expertise on the following would be very hel
 [#4]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/4
 [#5]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/5
 [#9]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/9
-[#12]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/12
 [#17]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/17
 [#18]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/18

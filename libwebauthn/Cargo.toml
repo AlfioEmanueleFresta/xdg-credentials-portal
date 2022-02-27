@@ -49,6 +49,7 @@ heapless = "0.7"
 aes = "0.8"
 hmac = "0.12"
 cbc = { version = "0.1", features = ["alloc"] }
+hkdf = "0.12"
 cosey = { path = "../cosey" }
 solo = { path = "../solo", optional = true }
 text_io = "0.1"
