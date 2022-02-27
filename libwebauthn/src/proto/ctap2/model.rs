@@ -439,6 +439,7 @@ pub trait Ctap2UserVerifiableRequest {
     fn set_uv_auth(&mut self, proto: Ctap2PinUvAuthProtocol, param: &[u8]);
     fn client_data_hash(&self) -> &[u8];
     fn permissions(&self) -> ClientPinRequestPermissions;
+    fn permissions_rpid(&self) -> &str;
 }
 
 impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
@@ -465,6 +466,10 @@ impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
         return ClientPinRequestPermissions::MAKE_CREDENTIAL
             | ClientPinRequestPermissions::GET_ASSERTION;
     }
+
+    fn permissions_rpid(&self) -> &str {
+        &self.relying_party.id
+    }
 }
 
 impl Ctap2UserVerifiableRequest for Ctap2GetAssertionRequest {
@@ -486,6 +491,10 @@ impl Ctap2UserVerifiableRequest for Ctap2GetAssertionRequest {
 
     fn permissions(&self) -> ClientPinRequestPermissions {
         return ClientPinRequestPermissions::GET_ASSERTION;
+    }
+
+    fn permissions_rpid(&self) -> &str {
+        &self.relying_party_id
     }
 }
 
@@ -667,6 +676,12 @@ pub struct Ctap2ClientPinRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pin_hash_encrypted: Option<ByteBuf>,
 
+    #[serde(skip_serializing)]
+    pub unused_07: (),
+
+    #[serde(skip_serializing)]
+    pub unused_08: (),
+
     /// permissions (0x09)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<u32>,
@@ -685,6 +700,8 @@ impl Ctap2ClientPinRequest {
             uv_auth_param: None,
             new_pin_encrypted: None,
             pin_hash_encrypted: None,
+            unused_07: (),
+            unused_08: (),
             permissions: None,
             permissions_rpid: None,
         }
@@ -702,6 +719,8 @@ impl Ctap2ClientPinRequest {
             uv_auth_param: None,
             new_pin_encrypted: None,
             pin_hash_encrypted: Some(ByteBuf::from(pin_hash_enc)),
+            unused_07: (),
+            unused_08: (),
             permissions: None,
             permissions_rpid: None,
         }
@@ -715,26 +734,51 @@ impl Ctap2ClientPinRequest {
             uv_auth_param: None,
             new_pin_encrypted: None,
             pin_hash_encrypted: None,
+            unused_07: (),
+            unused_08: (),
             permissions: None,
             permissions_rpid: None,
+        }
+    }
+
+    pub fn new_get_pin_token_with_perm(
+        protocol: Ctap2PinUvAuthProtocol,
+        public_key: PublicKey,
+        pin_hash_enc: &[u8],
+        permissions: ClientPinRequestPermissions,
+        permissions_rpid: &str,
+    ) -> Self {
+        Self {
+            protocol: Some(protocol),
+            command: Ctap2PinUvAuthProtocolCommand::GetPinUvAuthTokenUsingPinWithPermissions,
+            key_agreement: Some(public_key),
+            uv_auth_param: None,
+            new_pin_encrypted: None,
+            pin_hash_encrypted: Some(ByteBuf::from(pin_hash_enc)),
+            unused_07: (),
+            unused_08: (),
+            permissions: Some(permissions.bits()),
+            permissions_rpid: Some(permissions_rpid.to_owned()),
         }
     }
 
     pub fn new_get_uv_token_with_perm(
         protocol: Ctap2PinUvAuthProtocol,
         public_key: PublicKey,
-        pin_hash_enc: &[u8],
         permissions: ClientPinRequestPermissions,
+        permissions_rpid: &str,
     ) -> Self {
         Self {
             protocol: Some(protocol),
-            command: Ctap2PinUvAuthProtocolCommand::GetPinToken,
+            command: Ctap2PinUvAuthProtocolCommand::GetPinUvAuthTokenUsingUvWithPermissions,
             key_agreement: Some(public_key),
             uv_auth_param: None,
             new_pin_encrypted: None,
-            pin_hash_encrypted: Some(ByteBuf::from(pin_hash_enc)),
+            pin_hash_encrypted: None,
+            unused_07: (),
+            unused_08: (),
             permissions: Some(permissions.bits()),
-            permissions_rpid: None,
+            permissions_rpid: Some(permissions_rpid.to_owned()),
         }
     }
 }
@@ -765,7 +809,7 @@ pub enum Ctap2PinUvAuthProtocolCommand {
     SetPin = 0x03,
     ChangePin = 0x04,
     GetPinToken = 0x05,
-    GetPinUvAuthTokenUsingUvWithPermissinos = 0x06,
+    GetPinUvAuthTokenUsingUvWithPermissions = 0x06,
     GetUvRetries = 0x07,
     GetPinUvAuthTokenUsingPinWithPermissions = 0x09,
 }

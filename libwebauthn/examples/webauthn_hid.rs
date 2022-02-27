@@ -15,7 +15,7 @@ use libwebauthn::proto::ctap2::{
 };
 use libwebauthn::transport::hid::list_devices;
 use libwebauthn::transport::Device;
-use libwebauthn::webauthn::WebAuthn;
+use libwebauthn::webauthn::{Error as WebAuthnError, WebAuthn};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -58,10 +58,23 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             timeout: TIMEOUT,
         };
 
-        let response = channel
-            .webauthn_make_credential(&make_credentials_request, &pin_provider)
-            .await
-            .unwrap();
+        let response = loop {
+            match channel
+                .webauthn_make_credential(&make_credentials_request, &pin_provider)
+                .await
+            {
+                Ok(response) => break Ok(response),
+                Err(WebAuthnError::Ctap(ctap_error)) => {
+                    if ctap_error.is_retryable_user_error() {
+                        println!("Oops, try again! Error: {}", ctap_error);
+                        continue;
+                    }
+                    break Err(WebAuthnError::Ctap(ctap_error));
+                }
+                Err(err) => break Err(err),
+            };
+        }
+        .unwrap();
         println!("WebAuthn MakeCredential response: {:?}", response);
 
         let credential: Ctap2PublicKeyCredentialDescriptor = (&response).try_into().unwrap();
@@ -73,10 +86,24 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             extensions_cbor: None,
             timeout: TIMEOUT,
         };
-        let response = channel
-            .webauthn_get_assertion(&get_assertion, &pin_provider)
-            .await
-            .unwrap();
+
+        let response = loop {
+            match channel
+                .webauthn_get_assertion(&get_assertion, &pin_provider)
+                .await
+            {
+                Ok(response) => break Ok(response),
+                Err(WebAuthnError::Ctap(ctap_error)) => {
+                    if ctap_error.is_retryable_user_error() {
+                        println!("Oops, try again! Error: {}", ctap_error);
+                        continue;
+                    }
+                    break Err(WebAuthnError::Ctap(ctap_error));
+                }
+                Err(err) => break Err(err),
+            };
+        }
+        .unwrap();
         println!("WebAuthn GetAssertion response: {:?}", response);
     }
 

@@ -173,10 +173,13 @@ impl HidMessageParser {
         let mut cursor = IOCursor::new(&self.packets[0]);
         let cid = cursor.read_u32::<BigEndian>()?;
         let cmd = cursor.read_u8()? ^ PACKET_INITIAL_CMD_MASK;
-        let cmd: HidCommand = cmd.try_into().or(Err(IOError::new(
-            IOErrorKind::InvalidData,
-            format!("Invalid HID message command: {:?}", cmd),
-        )))?;
+        let Ok(cmd) = cmd.try_into() else {
+            error!(?cmd, "Invalid HID message command");
+            return Err(IOError::new(
+                IOErrorKind::InvalidData,
+          format!("Invalid HID message command: {:?}", cmd),
+           ));
+        };
         let expected_size = cursor.read_u16::<BigEndian>()?;
 
         let mut payload = vec![];

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_cbor::from_slice;
-use tracing::{debug, info, instrument, trace, warn};
+use tracing::{debug, instrument, trace, warn};
 
 use crate::proto::ctap2::cbor::CborRequest;
 use crate::proto::ctap2::Ctap2CommandCode;
@@ -53,7 +53,8 @@ where
             error => return Err(Error::Ctap(error)),
         };
         let ctap_response: Ctap2GetInfoResponse = from_slice(&cbor_response.data.unwrap()).unwrap();
-        info!("CTAP2 GetInfo response: {:?}", ctap_response);
+        debug!("CTAP2 GetInfo successful");
+        trace!(?ctap_response);
         Ok(ctap_response)
     }
 
@@ -72,7 +73,8 @@ where
         };
         let ctap_response: Ctap2MakeCredentialResponse =
             from_slice(&cbor_response.data.unwrap()).unwrap();
-        info!(?ctap_response, "CTAP2 MakeCredential response");
+        debug!("CTAP2 MakeCredential successful");
+        trace!(?ctap_response);
         Ok(ctap_response)
     }
 
@@ -87,7 +89,8 @@ where
         let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
         let ctap_response: Ctap2GetAssertionResponse =
             from_slice(&cbor_response.data.unwrap()).unwrap();
-        info!(?ctap_response, "CTAP2 GetAssertion response");
+        debug!("CTAP2 GetAssertion successful");
+        trace!(?ctap_response);
         Ok(ctap_response)
     }
 
@@ -126,7 +129,8 @@ where
         };
         let ctap_response: Ctap2ClientPinResponse =
             from_slice(&cbor_response.data.unwrap()).unwrap();
-        info!(?ctap_response, "CTAP2 ClientPin response");
+        debug!("CTAP2 ClientPin successful");
+        trace!(?ctap_response);
         Ok(ctap_response)
     }
 }

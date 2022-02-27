@@ -18,8 +18,9 @@ use crate::proto::ctap2::{
     Ctap2GetInfoResponse, Ctap2MakeCredentialRequest, Ctap2UserVerifiableRequest,
     Ctap2UserVerificationOperation,
 };
-use crate::transport::error::{CtapError, Error, TransportError};
 use crate::transport::Channel;
+
+pub use crate::transport::error::{CtapError, Error, TransportError};
 
 #[async_trait]
 pub trait WebAuthn {
@@ -193,7 +194,7 @@ where
         if fido_protocol == FidoProtocol::U2F {
             warn!("Negotiated protocol downgrade from FIDO2 to FIDO U2F");
         } else {
-            info!("Selected protocol: {:?}", fido_protocol);
+            debug!("Selected protocol: {:?}", fido_protocol);
         }
         Ok(fido_protocol)
     }
@@ -270,14 +271,22 @@ where
             &uv_proto.encrypt(&shared_secret, &pin_hash(&pin.unwrap()))?,
         ),
         Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingPinWithPermissions => {
-            Ctap2ClientPinRequest::new_get_uv_token_with_perm(
+            Ctap2ClientPinRequest::new_get_pin_token_with_perm(
                 uv_proto.version(),
                 public_key,
                 &uv_proto.encrypt(&shared_secret, &pin_hash(&pin.unwrap()))?,
                 ctap2_request.permissions(),
+                ctap2_request.permissions_rpid(),
             )
         }
-        _ => unimplemented!(), // TODO
+        Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingUvWithPermissions => {
+            Ctap2ClientPinRequest::new_get_uv_token_with_perm(
+                uv_proto.version(),
+                public_key,
+                ctap2_request.permissions(),
+                ctap2_request.permissions_rpid(),
+            )
+        }
     };
 
     let token_response = channel.ctap2_client_pin(&token_request, timeout).await?;

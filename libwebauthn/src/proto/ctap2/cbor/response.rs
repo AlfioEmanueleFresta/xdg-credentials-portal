@@ -2,6 +2,7 @@ use crate::proto::error::CtapError;
 
 use std::convert::{TryFrom, TryInto};
 use std::io::{Error as IOError, ErrorKind as IOErrorKind};
+use tracing::error;
 
 #[derive(Debug)]
 pub struct CborResponse {
@@ -19,10 +20,13 @@ impl TryFrom<&Vec<u8>> for CborResponse {
             ));
         }
 
-        let status_code: CtapError = packet[0].try_into().or(Err(IOError::new(
-            IOErrorKind::InvalidData,
-            format!("Invalid CTAP error code: {:x}", packet[0]),
-        )))?;
+        let Ok(status_code) = packet[0].try_into() else {
+            error!({ code = ?packet[0] }, "Invalid CTAP error code");
+            return Err(IOError::new(
+                IOErrorKind::InvalidData,
+                format!("Invalid CTAP error code: {:x}", packet[0]),
+            ));
+        };
 
         let data = if packet.len() > 1 {
             Some(Vec::from(&packet[1..]))

@@ -31,8 +31,8 @@ The project is composed of multiple crates:
 - FIDO2
   - 🟢 Implemented: Create credential
   - 🟢 Implemented: Verify assertion
+  - 🟢 Implemented: Biometric user verification
   - 🟠 Planned ([#17][#17]): Resident keys
-  - 🟠 Planned ([#18][#18]): Biometric authentication
 - FIDO2 to FIDO U2F downgrade
   - 🟢 Implemented: Basic functionality
   - 🟠 Planned ([#9][#9]): Support for excludeList and pre-flight requests
@@ -42,7 +42,7 @@ The project is composed of multiple crates:
 - PIN/UV Operations
   - 🟢 Implemented: GetPinToken
   - 🟢 Implemented: GetPinUvAuthTokenUsingPinWithPermissions
-  - 🟠 Planned ([#19][#19]): GetPinUvAuthTokenUsingUvWithPermissions
+  - 🟢 Implemented: GetPinUvAuthTokenUsingUvWithPermissions
 
 ## xdg-credential-platform
 
@@ -142,4 +142,3 @@ Alternatively, any investigation or expertise on the following would be very hel
 [#12]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/12
 [#17]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/17
 [#18]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/18
-[#19]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/19

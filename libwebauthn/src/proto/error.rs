@@ -48,14 +48,30 @@ pub enum CtapError {
     RequestTooLarge = 0x39,      // CTAP2_ERR_REQUEST_TOO_LARGE
     ActionTimeout = 0x3A,        // CTAP2_ERR_ACTION_TIMEOUT
     UserPresenceRequired = 0x3B, // CTAP2_ERR_UP_REQUIRED
+    UVInvalid = 0x3F,            // CTAP2_ERR_UV_INVALID
     Other = 0x7F,                // CTAP1_ERR_OTHER
+}
+
+impl CtapError {
+    pub fn is_retryable_user_error(&self) -> bool {
+        match &self {
+            Self::PINInvalid | Self::UVInvalid => true, // PIN or biometric auth failed
+            Self::UserActionTimeout => true,            // User action timed out
+            _ => false,
+        }
+    }
 }
 
 impl std::error::Error for CtapError {}
 
 impl std::fmt::Display for CtapError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(
+            f,
+            "{:?} (retryable user error: {})",
+            self,
+            self.is_retryable_user_error()
+        )
     }
 }
 
