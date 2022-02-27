@@ -198,6 +198,7 @@ where
     }
 }
 
+#[instrument(skip_all)]
 async fn user_verification<R, C>(
     channel: &mut C,
     user_verification: UserVerificationRequirement,
@@ -216,70 +217,80 @@ where
     let uv = rp_uv_preferred || dev_uv_protected;
     debug!(%rp_uv_preferred, %dev_uv_protected, %uv, "Checking if user verification is required");
 
-    if uv {
-        if !dev_uv_protected && user_verification.is_required() {
-            error!("Request requires user verification, but device user verification is not available.");
-            return Err(Error::Ctap(CtapError::PINNotSet));
-        };
+    if !uv {
+        debug!("User verification not requested by either RP nor authenticator. Ignoring.");
+        return Ok(());
+    }
 
-        let uv_operation = get_info_response.uv_operation();
-        if let Ctap2UserVerificationOperation::None = uv_operation {
-            debug!("No client operation. Setting deprecated request options.uv flag to true.");
-            ctap2_request.ensure_uv_set();
-            return Ok(());
-        }
-        let attempts_left = channel
-            .ctap2_client_pin(&Ctap2ClientPinRequest::new_get_pin_retries(), timeout)
-            .await?
-            .pin_retries;
-        let Some(raw_pin) = pin_provider.provide_pin(attempts_left).await else {
+    if !dev_uv_protected && user_verification.is_required() {
+        error!(
+            "Request requires user verification, but device user verification is not available."
+        );
+        return Err(Error::Ctap(CtapError::PINNotSet));
+    };
+
+    if !dev_uv_protected && user_verification.is_preferred() {
+        warn!("User verification is preferred, but not device user verification is not available. Ignoring.");
+        return Ok(());
+    }
+
+    let uv_operation = get_info_response.uv_operation();
+    if let Ctap2UserVerificationOperation::None = uv_operation {
+        debug!("No client operation. Setting deprecated request options.uv flag to true.");
+        ctap2_request.ensure_uv_set();
+        return Ok(());
+    }
+    let attempts_left = channel
+        .ctap2_client_pin(&Ctap2ClientPinRequest::new_get_pin_retries(), timeout)
+        .await?
+        .pin_retries;
+    let Some(raw_pin) = pin_provider.provide_pin(attempts_left).await else {
                 info!("User cancelled operation: no PIN provided");
                 return Err(Error::Ctap(CtapError::PINRequired));
             };
 
-        // In preparation for obtaining pinUvAuthToken, the platform:
-        // * Obtains a shared secret.
-        let pin_proto = select_pin_proto(&get_info_response).await?;
-        let client_pin_request = Ctap2ClientPinRequest::new_get_key_agreement(pin_proto.version());
-        let client_pin_response = channel
-            .ctap2_client_pin(&client_pin_request, timeout)
-            .await?;
-        let Some(public_key) = client_pin_response.key_agreement else {
+    // In preparation for obtaining pinUvAuthToken, the platform:
+    // * Obtains a shared secret.
+    let pin_proto = select_pin_proto(&get_info_response).await?;
+    let client_pin_request = Ctap2ClientPinRequest::new_get_key_agreement(pin_proto.version());
+    let client_pin_response = channel
+        .ctap2_client_pin(&client_pin_request, timeout)
+        .await?;
+    let Some(public_key) = client_pin_response.key_agreement else {
                 error!("Missing public key from Client PIN response");
                 return Err(Error::Ctap(CtapError::Other));
             };
-        let (public_key, shared_secret) = pin_proto.encapsulate(&public_key)?;
+    let (public_key, shared_secret) = pin_proto.encapsulate(&public_key)?;
 
-        // Then the platform obtains a pinUvAuthToken from the authenticator, with the mc (and likely also with the ga)
-        // permission (see "pre-flight", mentioned above), using the selected operation. If successful, the platform
-        // creates the pinUvAuthParam parameter by calling authenticate(pinUvAuthToken, clientDataHash), and goes
-        // to Step 1.1.1.
-        let encrypted_pin_uv_auth_token = match uv_operation {
-            Ctap2UserVerificationOperation::GetPinToken => {
-                let token_request = Ctap2ClientPinRequest::new_get_pin_token(
-                    pin_proto.version(),
-                    public_key,
-                    &pin_proto.encrypt(&shared_secret, &pin_hash(raw_pin.as_bytes()))?,
-                );
-                let token_response = channel.ctap2_client_pin(&token_request, timeout).await?;
-                let Some(pin_uv_auth_token) = token_response.pin_uv_auth_token else {
+    // Then the platform obtains a pinUvAuthToken from the authenticator, with the mc (and likely also with the ga)
+    // permission (see "pre-flight", mentioned above), using the selected operation. If successful, the platform
+    // creates the pinUvAuthParam parameter by calling authenticate(pinUvAuthToken, clientDataHash), and goes
+    // to Step 1.1.1.
+    let encrypted_pin_uv_auth_token = match uv_operation {
+        Ctap2UserVerificationOperation::GetPinToken => {
+            let token_request = Ctap2ClientPinRequest::new_get_pin_token(
+                pin_proto.version(),
+                public_key,
+                &pin_proto.encrypt(&shared_secret, &pin_hash(raw_pin.as_bytes()))?,
+            );
+            let token_response = channel.ctap2_client_pin(&token_request, timeout).await?;
+            let Some(pin_uv_auth_token) = token_response.pin_uv_auth_token else {
                         error!("Client PIN response did not include a PIN UV auth token");
                         return Err(Error::Ctap(CtapError::Other));
                     };
-                pin_uv_auth_token
-            }
-            _ => unimplemented!(), // TODO
-        };
-
-        let pin_uv_auth_token = pin_proto.decrypt(&shared_secret, &encrypted_pin_uv_auth_token)?;
-        let pin_auth_param = pin_proto.authenticate(
-            pin_uv_auth_token.as_slice(),
-            ctap2_request.client_data_hash(),
-        );
-
-        // * Sets the pinUvAuthProtocol parameter to the value as selected when it obtained the shared secret.
-        ctap2_request.set_uv_auth(pin_proto.version(), pin_auth_param.as_slice());
+            pin_uv_auth_token
+        }
+        _ => unimplemented!(), // TODO
     };
+
+    let pin_uv_auth_token = pin_proto.decrypt(&shared_secret, &encrypted_pin_uv_auth_token)?;
+    let pin_auth_param = pin_proto.authenticate(
+        pin_uv_auth_token.as_slice(),
+        ctap2_request.client_data_hash(),
+    );
+
+    // * Sets the pinUvAuthProtocol parameter to the value as selected when it obtained the shared secret.
+    ctap2_request.set_uv_auth(pin_proto.version(), pin_auth_param.as_slice());
 
     Ok(())
 }
