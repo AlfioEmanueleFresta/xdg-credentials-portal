@@ -1,15 +1,18 @@
 use std::convert::TryInto;
 
 use async_trait::async_trait;
-use tracing::{debug, info, instrument, trace, warn};
+use serde_bytes::ByteBuf;
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::fido::FidoProtocol;
 use crate::ops::u2f::{RegisterRequest, SignRequest};
 use crate::ops::webauthn::{GetAssertionRequest, GetAssertionResponse};
 use crate::ops::webauthn::{MakeCredentialRequest, MakeCredentialResponse};
+use crate::pin::{pin_hash, PinUvAuthProtocol, PinUvAuthProtocolOne};
 use crate::proto::ctap1::Ctap1;
 use crate::proto::ctap2::{
-    Ctap2, Ctap2DowngradeCheck, Ctap2GetAssertionRequest, Ctap2MakeCredentialRequest,
+    Ctap2, Ctap2ClientPinRequest, Ctap2DowngradeCheck, Ctap2GetAssertionRequest,
+    Ctap2GetInfoResponse, Ctap2MakeCredentialRequest, Ctap2UserVerificationOperation,
 };
 use crate::transport::error::{CtapError, Error, TransportError};
 use crate::transport::Channel;
@@ -43,6 +46,20 @@ pub trait WebAuthn {
     ) -> Result<GetAssertionResponse, Error>;
 
     async fn _negotiate_protocol(&mut self, allow_u2f: bool) -> Result<FidoProtocol, Error>;
+}
+
+async fn select_pin_proto(
+    get_info_response: &Ctap2GetInfoResponse,
+) -> Result<Box<dyn PinUvAuthProtocol + Send>, Error> {
+    for &protocol in get_info_response.pin_auth_protos.iter().flatten() {
+        match protocol {
+            1 => return Ok(Box::new(PinUvAuthProtocolOne::new())),
+            _ => (),
+        };
+    }
+
+    error!("No supported PIN/UV auth protocols found");
+    return Err(Error::Ctap(CtapError::Other));
 }
 
 #[async_trait]
@@ -86,7 +103,7 @@ where
         &mut self,
         op: &MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
-        let ctap2_request: Ctap2MakeCredentialRequest = op.into();
+        let mut ctap2_request: Ctap2MakeCredentialRequest = op.into();
 
         let get_info_response = self.ctap2_get_info().await?;
 
@@ -95,37 +112,60 @@ where
         let uv = rp_uv_preferred || dev_uv_protected;
         debug!(%rp_uv_preferred, %dev_uv_protected, %uv, "Checking if user verification is required");
 
-        /*
-        if get_info_response.option_enabled("uv") {
-            if get_info_response.option_enabled("pinUvAuthToken") {
-                todo!("getPinUvAuthTokenUsingUvWithPermissions")
-            } else {
-                debug!("Deprecated FIDO 2.0 behaviour: populating 'uv' flag");
-                ctap2_request.options = Some(Ctap2MakeCredentialOptions {
-                    deprecated_require_user_verification: true,
-                    ..ctap2_request.options.unwrap()
-                });
-            }
-        } else {
-            // !uv
-            if get_info_response.option_enabled("pinUvAuthToken") {
-                assert!(get_info_response.option_enabled("clientPin"));
-                todo!("getPinUvAuthTokenUsingPinWithPermissions")
-            } else {
-                // !pinUvAuthToken
-                assert!(get_info_response.option_enabled("clientPin"));
-                //let _token = self.get_pin_token(device).await?;
-                // TODO sesett pinUvAuthToken
-            }
-        }
-        */
-
         if uv {
-            unimplemented!("user verification");
-        } else {
-            // No user-verification.
-            // ctap2_request.set_no_uv();
-            // Don't do this - Yubikeys will fail if value is explicitly set to false.
+            let uv_operation = get_info_response.uv_operation();
+            if let Ctap2UserVerificationOperation::None = uv_operation {
+                debug!("No client operation. Setting deprecated request options.uv flag to true.");
+                ctap2_request.ensure_uv_set();
+            } else {
+                // In preparation for obtaining pinUvAuthToken, the platform:
+                // * Obtains a shared secret.
+                let pin_proto = select_pin_proto(&get_info_response).await?;
+                let client_pin_request =
+                    Ctap2ClientPinRequest::new_get_key_agreement(pin_proto.version());
+                let client_pin_response = self
+                    .ctap2_client_pin(&client_pin_request, op.timeout)
+                    .await?;
+                let Some(public_key) = client_pin_response.key_agreement else {
+                    error!("Missing public key from Client PIN response");
+                    return Err(Error::Ctap(CtapError::Other));
+                };
+                let (public_key, shared_secret) = pin_proto.encapsulate(&public_key)?;
+
+                // * Sets the pinUvAuthProtocol parameter to the value as selected when it obtained the shared secret.
+                ctap2_request.pin_auth_proto = Some(pin_proto.version() as u32);
+
+                // Then the platform obtains a pinUvAuthToken from the authenticator, with the mc (and likely also with the ga)
+                // permission (see "pre-flight", mentioned above), using the selected operation. If successful, the platform
+                // creates the pinUvAuthParam parameter by calling authenticate(pinUvAuthToken, clientDataHash), and goes
+                // to Step 1.1.1.
+                let encrypted_pin_uv_auth_token = match uv_operation {
+                    Ctap2UserVerificationOperation::GetPinToken => {
+                        let raw_pin = "0000".as_bytes(); // TODO pin input
+                        let token_request = Ctap2ClientPinRequest::new_get_pin_token(
+                            pin_proto.version(),
+                            public_key,
+                            &pin_proto.encrypt(&shared_secret, &pin_hash(raw_pin))?,
+                        );
+                        let token_response =
+                            self.ctap2_client_pin(&token_request, op.timeout).await?;
+                        let Some(pin_uv_auth_token) = token_response.pin_uv_auth_token else {
+                            error!("Client PIN response did not include a PIN UV auth token");
+                            return Err(Error::Ctap(CtapError::Other));
+                        };
+                        pin_uv_auth_token
+                    }
+                    _ => unimplemented!(), // TODO
+                };
+
+                // The spec don't say this very explicitly... but the token comes encrypted.
+                let pin_uv_auth_token =
+                    pin_proto.decrypt(&shared_secret, &encrypted_pin_uv_auth_token)?;
+
+                let pin_auth_param = pin_proto
+                    .authenticate(pin_uv_auth_token.as_slice(), ctap2_request.hash.as_slice());
+                ctap2_request.pin_auth_param = Some(ByteBuf::from(pin_auth_param.as_slice()));
+            }
         }
 
         self.ctap2_make_credential(&ctap2_request, op.timeout).await

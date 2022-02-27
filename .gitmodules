@@ -1,3 +1,6 @@
 [submodule "solo/src/ext"]
 	path = solo/src/ext
 	url = https://github.com/AlfioEmanueleFresta/solo.git
+[submodule "cosey"]
+	path = cosey
+	url = git@github.com:AlfioEmanueleFresta/cosey.git

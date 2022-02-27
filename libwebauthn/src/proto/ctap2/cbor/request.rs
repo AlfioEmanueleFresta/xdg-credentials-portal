@@ -2,6 +2,7 @@ extern crate serde_cbor;
 
 use serde_cbor::ser::to_vec;
 
+use crate::proto::ctap2::model::Ctap2ClientPinRequest;
 use crate::proto::ctap2::model::Ctap2CommandCode;
 use crate::proto::ctap2::model::Ctap2GetAssertionRequest;
 use crate::proto::ctap2::model::Ctap2MakeCredentialRequest;
@@ -40,6 +41,15 @@ impl From<&Ctap2GetAssertionRequest> for CborRequest {
     fn from(request: &Ctap2GetAssertionRequest) -> CborRequest {
         CborRequest {
             command: Ctap2CommandCode::AuthenticatorGetAssertion,
+            encoded_data: to_vec(request).unwrap(),
+        }
+    }
+}
+
+impl From<&Ctap2ClientPinRequest> for CborRequest {
+    fn from(request: &Ctap2ClientPinRequest) -> CborRequest {
+        CborRequest {
+            command: Ctap2CommandCode::AuthenticatorClientPin,
             encoded_data: to_vec(request).unwrap(),
         }
     }

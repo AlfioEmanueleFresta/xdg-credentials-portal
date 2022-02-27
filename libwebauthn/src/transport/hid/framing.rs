@@ -3,7 +3,7 @@ use std::io::{Cursor as IOCursor, Error as IOError, ErrorKind as IOErrorKind};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use tracing::{error, warn};
+use tracing::{debug, error};
 
 const BROADCAST_CID: u32 = 0xFFFFFFFF;
 const PACKET_INITIAL_HEADER_SIZE: usize = 7;
@@ -122,7 +122,7 @@ impl HidMessageParser {
             ));
         }
         if packet.iter().all(|&b| b == 0) {
-            warn!("Received unexpected packet of all zeroes, ignoring"); // ?!
+            debug!("Received unexpected packet of all zeroes, ignoring"); // ?!
         } else {
             self.packets.push(Vec::from(packet));
         }

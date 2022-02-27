@@ -9,9 +9,10 @@ use crate::proto::ctap2::Ctap2CommandCode;
 use crate::transport::error::{CtapError, Error};
 use crate::transport::Channel;
 
+use super::model::Ctap2ClientPinResponse;
 use super::{
-    Ctap2GetAssertionRequest, Ctap2GetAssertionResponse, Ctap2GetInfoResponse,
-    Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse,
+    Ctap2ClientPinRequest, Ctap2GetAssertionRequest, Ctap2GetAssertionResponse,
+    Ctap2GetInfoResponse, Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse,
 };
 
 const TIMEOUT_GET_INFO: Duration = Duration::from_millis(250);
@@ -24,6 +25,11 @@ pub trait Ctap2 {
         request: &Ctap2MakeCredentialRequest,
         timeout: Duration,
     ) -> Result<Ctap2MakeCredentialResponse, Error>;
+    async fn ctap2_client_pin(
+        &mut self,
+        request: &Ctap2ClientPinRequest,
+        timeout: Duration,
+    ) -> Result<Ctap2ClientPinResponse, Error>;
     async fn ctap2_get_assertion(
         &mut self,
         request: &Ctap2GetAssertionRequest,
@@ -76,7 +82,7 @@ where
         request: &Ctap2GetAssertionRequest,
         _timeout: Duration,
     ) -> Result<Ctap2GetAssertionResponse, Error> {
-        debug!("CTAP2 GetAssertion request: {:?}", request);
+        trace!(?request);
         self.cbor_send(&request.into(), TIMEOUT_GET_INFO).await?;
         let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
         let ctap_response: Ctap2GetAssertionResponse =
@@ -103,5 +109,24 @@ where
                 }
             }
         }
+    }
+
+    #[instrument(skip_all)]
+    async fn ctap2_client_pin(
+        &mut self,
+        request: &Ctap2ClientPinRequest,
+        _timeou: Duration,
+    ) -> Result<Ctap2ClientPinResponse, Error> {
+        trace!(?request);
+        self.cbor_send(&request.into(), TIMEOUT_GET_INFO).await?;
+        let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
+        match cbor_response.status_code {
+            CtapError::Ok => (),
+            error => return Err(Error::Ctap(error)),
+        };
+        let ctap_response: Ctap2ClientPinResponse =
+            from_slice(&cbor_response.data.unwrap()).unwrap();
+        info!(?ctap_response, "CTAP2 ClientPin response");
+        Ok(ctap_response)
     }
 }

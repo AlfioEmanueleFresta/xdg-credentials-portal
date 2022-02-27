@@ -1,3 +1,4 @@
+#![feature(let_else)]
 #![feature(option_get_or_insert_default)]
 
 pub mod fido;

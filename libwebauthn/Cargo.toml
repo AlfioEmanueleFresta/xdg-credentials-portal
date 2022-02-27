@@ -20,7 +20,7 @@ dbus = "0.9.5"
 tracing = "0.1.29"
 tracing-futures = { version = "0.2.5", features = ["tokio-executor"] }
 maplit = "1.0.2"
-sha2 = "0.9.8"
+sha2 = "0.10.2"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 async-trait = "0.1.36"
 futures = "0.3.5"
@@ -44,7 +44,13 @@ hidapi = { version = "1.2.5", default-features = false, features = [
 ] }
 bitflags = "1.2.1"
 rand = "0.8.4"
-cosey = "0.3.0"
+p256 = { version = "0.10", features = ["ecdh", "arithmetic"] }
+heapless = "0.7"
+# cosey = "0.3.0"
+aes = "0.8"
+hmac = "0.12"
+cbc = { version = "0.1", features = ["alloc"] }
+cosey = { path = "../cosey" }
 solo = { path = "../solo", optional = true }
 
 [dev-dependencies]

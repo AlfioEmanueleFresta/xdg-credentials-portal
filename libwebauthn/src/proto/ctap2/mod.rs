@@ -9,10 +9,10 @@ mod protocol;
 pub use downgrade::Ctap2DowngradeCheck;
 pub use model::Ctap2GetInfoResponse;
 pub use model::{
-    Ctap2COSEAlgorithmIdentifier, Ctap2CommandCode, Ctap2CredentialType,
-    Ctap2MakeCredentialOptions, Ctap2PublicKeyCredentialDescriptor,
+    Ctap2COSEAlgorithmIdentifier, Ctap2ClientPinRequest, Ctap2CommandCode, Ctap2CredentialType,
+    Ctap2MakeCredentialOptions, Ctap2PinUvAuthProtocol, Ctap2PublicKeyCredentialDescriptor,
     Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialType,
-    Ctap2PublicKeyCredentialUserEntity, Ctap2Transport,
+    Ctap2PublicKeyCredentialUserEntity, Ctap2Transport, Ctap2UserVerificationOperation,
 };
 pub use model::{Ctap2GetAssertionRequest, Ctap2GetAssertionResponse};
 pub use model::{Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse};
