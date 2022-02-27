@@ -3,4 +3,4 @@
 	url = https://github.com/AlfioEmanueleFresta/solo.git
 [submodule "cosey"]
 	path = cosey
-	url = git@github.com:AlfioEmanueleFresta/cosey.git
+	url = https://github.com/AlfioEmanueleFresta/cosey.git
