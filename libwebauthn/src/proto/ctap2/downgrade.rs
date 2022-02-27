@@ -161,7 +161,7 @@ mod tests {
     fn ctap2_make_credential_downgradable_unsupported_uv() {
         let mut request = Ctap2MakeCredentialRequest::dummy();
         request.options = Some(Ctap2MakeCredentialOptions {
-            deprecated_require_user_verification: true,
+            deprecated_require_user_verification: Some(true),
             ..Default::default()
         });
         request.algorithms = vec![Ctap2CredentialType::default()];

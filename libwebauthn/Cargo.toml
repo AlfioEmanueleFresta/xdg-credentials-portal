@@ -1,8 +1,8 @@
 [package]
 name = "xdg-credentials-portal"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Alfie Fresta <alfie.fresta@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "libwebauthn"

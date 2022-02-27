@@ -110,6 +110,7 @@ impl<'d> Device<'d, Hid, HidChannel<'d>> for HidDevice {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use crate::transport::Device;
 
     #[cfg(feature = "hid-device-tests")]
