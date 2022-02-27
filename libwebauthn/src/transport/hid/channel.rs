@@ -337,6 +337,11 @@ impl<'d> HidChannel<'d> {
 impl Drop for HidChannel<'_> {
     #[instrument(level = Level::DEBUG, skip_all, fields(dev = %self.device))]
     fn drop(&mut self) {
+        #[cfg(feature = "virtual-hid-device")]
+        if let HidBackendDevice::VirtualDevice(_) = self.device.backend {
+            return;
+        }
+
         if let Err(err) = futures::executor::block_on(self.hid_cancel()) {
             warn!(
                 ?err,
