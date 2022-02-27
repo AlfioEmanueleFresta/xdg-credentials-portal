@@ -14,7 +14,6 @@ hid-device-tests = ["virtual-hid-device"]
 virtual-hid-device = ["solo"]
 
 [dependencies]
-authenticator = "0.2.15"
 base64-url = "1.1.14"
 dbus = "0.9.5"
 tracing = "0.1.29"

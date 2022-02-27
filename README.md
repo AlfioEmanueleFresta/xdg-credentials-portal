@@ -2,21 +2,62 @@
 
 ![](https://media.giphy.com/media/Jo6ye8NvYF2Z2Odb5b/giphy.gif)
 
-This is a standalone service which aims to offer FIDO2 functionality (FIDO U2F, and WebAuthn) over a [D-Bus Portal interface][xdg-portal].
+This is a standalone service which aims to offer FIDO2 platform functionality (FIDO U2F, and WebAuthn) on Linux, over a [D-Bus Portal interface][xdg-portal].
 
-Similarly to [xdg-desktop-portal][xdg-desktop-portal] and [xdg-documents-portal][xdg-documents-portal], the service is intended to be accessed over a proposed D-Bus _portal_: [org.freedesktop.portal.Credentials][xml-spec].
+The project is composed of multiple crates:
 
-## High-level Architecture
+- **libwebauthn**: Linux native implementation of FIDO2 and FIDO U2F Platform APIs.
+  - Fully written in Rust.
+  - No longer relies on Mozilla's [authenticator-rs][authenticator-rs].
+  - Supporting multiple transports (currently USB HID and BLE). The library is designed to have pluggable transport implementations, making it easy to add transport backends (planned: NFC, caBLEv2).
+- **xdg-credentials-portal**: API proposal and reference implementation for a service which will expose FIDO2 and FIDO U2F Platform APIs via a D-Bus interface, for desktop applications to use - including conteinerized apps such as Flatpaks.
+  - Similarly to [xdg-desktop-portal][xdg-desktop-portal] and [xdg-documents-portal][xdg-documents-portal], the service is intended to be accessed over a proposed D-Bus _portal_: [org.freedesktop.portal.Credentials][xml-spec].
+
+## libwebauthn
+
+### Transports
+
+|                      | USB (HID)                 | Bluetooth Low Energy (BLE) | NFC                   | TPM 2.0 (Platform)    |
+| -------------------- | ------------------------- | -------------------------- | --------------------- | --------------------- |
+| **FIDO U2F**         | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
+| **WebAuthn (FIDO2)** | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
+
+### Platform functionality
+
+- FIDO U2F
+  - 🟢 Implemented: Registration (U2F_REGISTER)
+  - 🟢 Implemented: Authentication (U2F_AUTHENTICATE)
+  - 🟢 Implemented: Version (U2F_VERSION)
+- FIDO2
+  - 🟢 Implemented: Create credential
+  - 🟢 Implemented: Verify assertion
+  - 🟠 Planned ([#17][#17]): Resident keys
+  - 🟠 Planned ([#18][#18]): Biometric authentication
+- FIDO2 to FIDO U2F downgrade
+  - 🟢 Implemented: Basic functionality
+  - 🟠 Planned ([#9][#9]): Support for excludeList and pre-flight requests
+- PIN/UV Protocols
+  - 🟢 Implemented: PIN/UV Auth Protocol One
+  - 🟠 Planned ([#12][#12]): PIN/UV Auth Protocol Two
+- PIN/UV Operations
+  - 🟢 Implemented: GetPinToken
+  * 🟠 Planned ([#19][#19]): GetPinUvAuthTokenUsingUvWithPermissions
+  * 🟠 Planned ([#20][#20]): GetPinUvAuthTokenUsingPinWithPermissions
+
+## xdg-credential-platform
+
+This is a very early stage idea, no proposed spec exists yet.
+
+Here is an high-level architecture diagram of the proposed service and how it will interact with its clients:
 
 ![High-Level Architecture](./images/diagram-1.png)
 
 Footnotes:
 
-- **\***: Better alternatives for UI should be considered
-- **\*\***: CTAP2 support in authenticator-rs is under active development
+- **\***: Better alternatives for UI should be considered, e.g. native UI implementations via xdg-credentials-portal-{gnome, kde}.
 - **Δ**: See Roadmap section below
 
-## Motivation
+### Motivation
 
 - **Sandboxed Browsers**. A modern solutions is required to allow sandboxed applications (Flatpaks, Snaps) to access U2F and FIDO2 devices, without granting blanket access to all devices.
 
@@ -24,7 +65,7 @@ Footnotes:
 
 - **Passwordless Authentication**. FIDO2/WebAuthn brings the promise of a world without passwords, and related security incidents, which is worth pursuing. A platform API would make it easier for applications to support stronger authentication.
 
-- **Platform Authenticators** are an important part of the FIDO2 specification, and fundamental for widespread adoption of passwordless authentication. Windows Hello, [Android's FIDO2 support][fido-android], Apple's TouchID and FaceID, are all examples of platform authenticators. There is no reason why the Linux desktop community could not enjoy similar benefits.
+- **Platform Authenticators** are an important part of the FIDO2 specification, and fundamental for widespread adoption of passwordless authentication. Windows Hello, [Android's FIDO2 support][fido-android], Apple's TouchID and FaceID, are all examples of platform authenticators. There is no reason why the Linux desktop community could not enjoy similar benefits
 
   - [Passwordless Web Authentication Support via Windows Hello - Mozilla Security Blog][firefox-hello]
   - [Your Google Android 7+ Phone Is Now a FIDO2 Security Key - Fido Alliance][fido-android]
@@ -32,20 +73,7 @@ Footnotes:
 - **Native Apps FIDO2 Support**. FIDO2 should not be segregated to web applications.
   - [FIDO2 API for Android][fido-android-api] (native apps)
 
-## Status & Contributing
-
-**The API design and implementation are in progress.** See roadmap below. Contributions are welcome.
-
-**This is still a work-in-progress proposal**, and any contributions are very welcome. Please reach out if you have expertise and/or advice on the following:
-
-- D-Bus Portal API design
-- Proposal and contribution processes (Flatpak, GNOME, etc.)
-- Rust reference implementation
-- Any of the technical areas covered in the 'Roadmap' section below
-- UI Development
-- UX
-
-## Similar APIs and references
+### Other platforms
 
 Here is a list of related APIs available on other platforms, which offer similar functionality:
 
@@ -62,30 +90,11 @@ Further references:
     - [CTAP 2.1 Review Draft][ctap21]
   - [W3C - Web Authentication API][webauthn]
 
+## Contributing
 
-## Backend status
+If you'd like to contribute but you don't know where to start, take a look at available tasks in the _Issues_ tab.
 
-|                       | USB (HID)                             | Bluetooth LE                             | NFC                 | TPM 2.0 (Platform) |
-|-----------------------|---------------------------------------|------------------------------------------|---------------------|--------------------|
-| **FIDO U2F**          | Supported (via authenticator-rs)      | Supported                                |  Planned ([#5](#5)  | Planned ([#4][#4]) |
-| **WebAuthn (FIDO2)**  | In development ([#10][#10])           | In development ([#10][#10], [#10][#3])   |  Planned ([#5](#5)  | Planned ([#4][#4]) |
-
-## Roadmap
-
-
-
-**Backend support**:
-
-- **FIDO U2F (CTAP1)**
-  - **USB** via [authenticator-rs][authenticator-rs]
-  - **Bluetooth Low Energy (BLE)** via Blue-Z D-Bus APIs
-
-- **FIDO2 WebAuthn (CTAP2)**
-  - **USB** via [authenticator-rs][authenticator-rs] (initially by downgrading to CTAP1, CTAP2 functionality is under development in the [ctap2][authenticator-rs-ctap2] branch)
-  - **Bluetooth Low Energy (BLE)** via Blue-Z D-Bus APIs
-  - NFC
-
-**Further investigation is needed into:**
+Alternatively, any investigation or expertise on the following would be very helpful. Please reach out!
 
 - **Platform Authenticator support**. Similarly to Android devices, and Windows Hello. In order to implement this (and request FIDO2 certification), support for the following is needed:
 
@@ -98,7 +107,11 @@ Further references:
 
 - **PAM, and passwordless login** (long-term goal). A PAM module would allow using FIDO2 for user login purposes, e.g. using the platform authenticator (similar to Windows Hello).
 
-- **Draft Credentials Portal API**
+- **D-Bus Portal API design**
+
+- **Proposal and contribution processes (Flatpak, GNOME, etc.)**
+
+- **UI/UX**
 
 [xdg-portal]: https://flatpak.github.io/xdg-desktop-portal/portal-docs.html
 [xdg-desktop-portal]: https://github.com/flatpak/xdg-desktop-portal
@@ -125,3 +138,9 @@ Further references:
 [#3]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/3
 [#4]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/4
 [#5]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/5
+[#9]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/9
+[#12]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/12
+[#17]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/17
+[#18]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/18
+[#19]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/19
+[#20]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/20
