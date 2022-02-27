@@ -3,13 +3,14 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::time::{sleep, timeout as tokio_timeout};
-use tracing::{debug, instrument, trace};
+use tracing::{debug, error, info, instrument, span, trace, warn, Level};
 
 use super::apdu::{ApduRequest, ApduResponse, ApduResponseStatus};
 use super::{
     Ctap1RegisterRequest, Ctap1RegisterResponse, Ctap1SignRequest, Ctap1SignResponse,
     Ctap1VersionRequest, Ctap1VersionResponse,
 };
+use crate::proto::ctap1::model::Preflight;
 use crate::proto::CtapError;
 use crate::transport::error::{Error, TransportError};
 use crate::transport::Channel;
@@ -48,14 +49,33 @@ where
         &mut self,
         request: &Ctap1RegisterRequest,
     ) -> Result<Ctap1RegisterResponse, Error> {
-        debug!({ %request.app_id, %request.require_user_presence, %request.check_only }, "CTAP1 register request");
+        debug!({ %request.require_user_presence }, "CTAP1 register request");
         trace!(?request);
-        // TODO iterate over exclude list
 
-        let apdu_request: ApduRequest = request.into();
+        let (request, preflight_requests) = request.preflight()?;
+        debug!({ count = preflight_requests.len() }, "Preflight requests");
+        for preflight in preflight_requests.iter() {
+            let span = span!(Level::DEBUG, "preflight");
+            let _enter = span.enter();
+            match self.ctap1_sign(preflight).await {
+                Ok(_) => {
+                    info!("Already-registered credential found during preflight request.");
+                    return Err(Error::Ctap(CtapError::CredentialExcluded));
+                }
+                Err(Error::Ctap(CtapError::NoCredentials)) => {
+                    debug!("Credential doesn't already exist, continuing.");
+                }
+                Err(err) => {
+                    warn!(?err, "Preflight request failed with unexpected error.");
+                }
+            };
+        }
+
+        let apdu_request: ApduRequest = (&request).into();
         let apdu_response = send_apdu_request_wait_uv(self, &apdu_request, request.timeout).await?;
         let status = apdu_response.status().or(Err(CtapError::Other))?;
         if status != ApduResponseStatus::NoError {
+            error!(?status, "APDU response has error code");
             return Err(Error::Ctap(CtapError::from(status)));
         }
 
@@ -65,15 +85,16 @@ where
         Ok(response)
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip_all, fields(preflight = !request.require_user_presence))]
     async fn ctap1_sign(&mut self, request: &Ctap1SignRequest) -> Result<Ctap1SignResponse, Error> {
-        debug!({ %request.app_id, %request.require_user_presence }, "CTAP1 sign request");
+        debug!({ %request.require_user_presence }, "CTAP1 sign request");
         trace!(?request);
 
         let apdu_request: ApduRequest = request.into();
         let apdu_response = send_apdu_request_wait_uv(self, &apdu_request, request.timeout).await?;
         let status = apdu_response.status().or(Err(CtapError::Other))?;
         if status != ApduResponseStatus::NoError {
+            error!(?status, "APDU response has error code");
             return Err(Error::Ctap(CtapError::from(status)));
         }
 

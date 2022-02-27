@@ -35,7 +35,7 @@ The project is composed of multiple crates:
   - 🟠 Planned ([#17][#17]): Resident keys
 - FIDO2 to FIDO U2F downgrade
   - 🟢 Implemented: Basic functionality
-  - 🟠 Planned ([#9][#9]): Support for excludeList and pre-flight requests
+  - 🟢 Implemented: Support for excludeList and pre-flight requests
 - PIN/UV Protocols
   - 🟢 Implemented: PIN/UV Auth Protocol One
   - 🟢 Implemented: PIN/UV Auth Protocol Two
@@ -138,6 +138,5 @@ Alternatively, any investigation or expertise on the following would be very hel
 [#3]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/3
 [#4]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/4
 [#5]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/5
-[#9]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/9
 [#17]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/17
 [#18]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/18

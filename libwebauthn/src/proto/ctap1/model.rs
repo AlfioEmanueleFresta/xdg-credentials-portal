@@ -8,8 +8,10 @@ use x509_parser::prelude::X509Certificate;
 use x509_parser::traits::FromDer;
 
 use crate::proto::ctap1::apdu::{ApduResponse, ApduResponseStatus};
+use crate::proto::ctap2::Ctap2Transport;
+use crate::webauthn::CtapError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Ctap1Transport {
     BT,
     BLE,
@@ -17,12 +19,24 @@ pub enum Ctap1Transport {
     USB,
 }
 
-#[derive(Debug)]
+impl TryFrom<&Ctap2Transport> for Ctap1Transport {
+    type Error = CtapError;
+    fn try_from(ctap2: &Ctap2Transport) -> Result<Ctap1Transport, Self::Error> {
+        match ctap2 {
+            Ctap2Transport::BLE => Ok(Ctap1Transport::BLE),
+            Ctap2Transport::USB => Ok(Ctap1Transport::USB),
+            Ctap2Transport::NFC => Ok(Ctap1Transport::NFC),
+            Ctap2Transport::INTERNAL => Err(CtapError::UnsupportedOption),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum Ctap1Version {
     U2fV2,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ctap1RegisteredKey {
     pub version: Ctap1Version,
     pub key_handle: Vec<u8>,
@@ -41,17 +55,14 @@ impl Ctap1RegisteredKey {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ctap1RegisterRequest {
     pub version: Ctap1Version,
-    pub app_id: String,
+    pub app_id_hash: Vec<u8>,
     pub challenge: Vec<u8>,
     pub registered_keys: Vec<Ctap1RegisteredKey>,
     pub timeout: Duration,
     pub require_user_presence: bool,
-
-    /// this is a check-only request to process the exclusion list
-    pub check_only: bool,
 }
 
 impl Ctap1RegisterRequest {
@@ -62,21 +73,18 @@ impl Ctap1RegisterRequest {
         timeout: Duration,
         require_user_presence: bool,
     ) -> Ctap1RegisterRequest {
+        let mut hasher = Sha256::default();
+        hasher.update(app_id);
+        let app_id_hash = hasher.finalize().to_vec();
+
         Ctap1RegisterRequest {
             version: Ctap1Version::U2fV2,
-            app_id: String::from(app_id),
+            app_id_hash: app_id_hash,
             challenge: Vec::from(challenge),
-            check_only: false,
             registered_keys,
             timeout,
             require_user_presence,
         }
-    }
-
-    pub fn app_id_hash(&self) -> Vec<u8> {
-        let mut hasher = Sha256::default();
-        hasher.update(self.app_id.as_bytes());
-        hasher.finalize().to_vec()
     }
 }
 
@@ -143,7 +151,7 @@ impl Ctap1RegisterResponse {
 
 #[derive(Debug, Clone)]
 pub struct Ctap1SignRequest {
-    pub app_id: String,
+    pub app_id_hash: Vec<u8>,
     pub challenge: Vec<u8>,
     pub key_handle: Vec<u8>,
     pub timeout: Duration,
@@ -158,8 +166,12 @@ impl Ctap1SignRequest {
         timeout: Duration,
         require_user_presence: bool,
     ) -> Ctap1SignRequest {
+        let mut hasher = Sha256::default();
+        hasher.update(app_id);
+        let app_id_hash = hasher.finalize().to_vec();
+
         Ctap1SignRequest {
-            app_id: String::from(app_id),
+            app_id_hash: app_id_hash,
             challenge: Vec::from(challenge),
             key_handle: Vec::from(key_handle),
             timeout,
@@ -167,10 +179,19 @@ impl Ctap1SignRequest {
         }
     }
 
-    pub fn app_id_hash(&self) -> Vec<u8> {
-        let mut hasher = Sha256::default();
-        hasher.update(self.app_id.as_bytes());
-        hasher.finalize().to_vec()
+    pub fn new_preflight(
+        app_id_hash: &[u8],
+        challenge: &[u8],
+        key_handle: &[u8],
+        timeout: Duration,
+    ) -> Ctap1SignRequest {
+        Ctap1SignRequest {
+            app_id_hash: Vec::from(app_id_hash),
+            challenge: Vec::from(challenge),
+            key_handle: Vec::from(key_handle),
+            timeout,
+            require_user_presence: false,
+        }
     }
 }
 
@@ -226,6 +247,7 @@ impl TryFrom<ApduResponse> for Ctap1VersionResponse {
 #[derive(Debug, Clone)]
 pub struct Ctap1SignResponse {
     pub user_presence_verified: bool,
+    pub counter: u32,
     pub signature: Vec<u8>,
 }
 
@@ -250,15 +272,42 @@ impl TryFrom<ApduResponse> for Ctap1SignResponse {
             0x01 => true,
             _ => false,
         };
-        let _counter = cursor.read_u32::<BigEndian>()?;
+        let counter = cursor.read_u32::<BigEndian>()?;
 
         let mut signature = vec![];
         cursor.read_to_end(&mut signature)?;
 
         Ok(Ctap1SignResponse {
             user_presence_verified,
+            counter,
             signature,
         })
+    }
+}
+
+pub trait Preflight<P>: Sized {
+    /// Modify request in place, removing items in exclusion list, in favour of generating new pre-fligh requests.
+    fn preflight(&self) -> Result<(Self, Vec<P>), CtapError>;
+}
+
+impl Preflight<Ctap1SignRequest> for Ctap1RegisterRequest {
+    fn preflight(&self) -> Result<(Self, Vec<Ctap1SignRequest>), CtapError> {
+        let preflight_requests: Vec<Ctap1SignRequest> = self
+            .registered_keys
+            .iter()
+            .map(|registered_key| {
+                Ctap1SignRequest::new_preflight(
+                    &self.app_id_hash,
+                    &[0u8; 32],
+                    &registered_key.key_handle,
+                    self.timeout,
+                )
+            })
+            .collect();
+
+        let mut modified = self.to_owned();
+        modified.registered_keys = vec![];
+        Ok((modified, preflight_requests))
     }
 }
 

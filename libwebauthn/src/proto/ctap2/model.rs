@@ -9,12 +9,12 @@ use serde_bytes::ByteBuf;
 use serde_derive::{Deserialize, Serialize};
 use serde_indexed::{DeserializeIndexed, SerializeIndexed};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use sha2::{Digest, Sha256};
 use tracing::debug;
 use tracing::warn;
 
 use crate::ops::webauthn::GetAssertionRequest;
 use crate::ops::webauthn::MakeCredentialRequest;
+use crate::proto::ctap1::Ctap1Transport;
 use crate::transport::error::CtapError;
 
 // 32 (rpIdHash) + 1 (flags) + 4 (signCount) + 16 (aaguid)
@@ -37,6 +37,7 @@ pub struct Ctap2PublicKeyCredentialRpEntity {
 }
 
 impl Ctap2PublicKeyCredentialRpEntity {
+    #[cfg(test)]
     pub fn dummy() -> Self {
         Self {
             id: String::from(".dummy"),
@@ -66,6 +67,7 @@ pub struct Ctap2PublicKeyCredentialUserEntity {
 }
 
 impl Ctap2PublicKeyCredentialUserEntity {
+    #[cfg(test)]
     pub fn dummy() -> Self {
         Self {
             id: ByteBuf::from([1]),
@@ -100,6 +102,16 @@ pub enum Ctap2Transport {
     INTERNAL,
 }
 
+impl From<&Ctap1Transport> for Ctap2Transport {
+    fn from(ctap1: &Ctap1Transport) -> Ctap2Transport {
+        match ctap1 {
+            Ctap1Transport::BT => Ctap2Transport::BLE,
+            Ctap1Transport::BLE => Ctap2Transport::BLE,
+            Ctap1Transport::USB => Ctap2Transport::USB,
+            Ctap1Transport::NFC => Ctap2Transport::NFC,
+        }
+    }
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ctap2PublicKeyCredentialDescriptor {
     pub r#type: Ctap2PublicKeyCredentialType,
@@ -236,6 +248,9 @@ pub struct FidoU2fAttestationStmt {
 
     #[serde(rename = "sig")]
     pub signature: ByteBuf,
+
+    #[serde(rename = "x5c")]
+    pub certificates: Vec<ByteBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -309,23 +324,6 @@ pub struct Ctap2MakeCredentialRequest {
 }
 
 impl Ctap2MakeCredentialRequest {
-    pub fn dummy() -> Self {
-        let hasher = Sha256::default();
-        let hash = hasher.finalize().to_vec();
-        Self {
-            hash: ByteBuf::from(hash),
-            relying_party: Ctap2PublicKeyCredentialRpEntity::dummy(),
-            user: Ctap2PublicKeyCredentialUserEntity::dummy(),
-            algorithms: vec![Ctap2CredentialType::default()],
-            exclude: None,
-            extensions_cbor: None,
-            options: None,
-            pin_auth_param: None,
-            pin_auth_proto: None,
-            enterprise_attestation: None,
-        }
-    }
-
     pub fn skip_serializing_options(options: &Option<Ctap2MakeCredentialOptions>) -> bool {
         options.map_or(true, |options| options.skip_serializing())
     }

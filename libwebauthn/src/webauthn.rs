@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -6,9 +5,9 @@ use cosey::PublicKey;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::fido::FidoProtocol;
-use crate::ops::u2f::{RegisterRequest, SignRequest};
+use crate::ops::u2f::{RegisterRequest, SignRequest, UpgradableResponse};
 use crate::ops::webauthn::{
-    GetAssertionRequest, GetAssertionResponse, UserVerificationRequirement,
+    DowngradableRequest, GetAssertionRequest, GetAssertionResponse, UserVerificationRequirement,
 };
 use crate::ops::webauthn::{MakeCredentialRequest, MakeCredentialResponse};
 use crate::pin::{
@@ -16,9 +15,8 @@ use crate::pin::{
 };
 use crate::proto::ctap1::Ctap1;
 use crate::proto::ctap2::{
-    Ctap2, Ctap2ClientPinRequest, Ctap2DowngradeCheck, Ctap2GetAssertionRequest,
-    Ctap2GetInfoResponse, Ctap2MakeCredentialRequest, Ctap2UserVerifiableRequest,
-    Ctap2UserVerificationOperation,
+    Ctap2, Ctap2ClientPinRequest, Ctap2GetAssertionRequest, Ctap2GetInfoResponse,
+    Ctap2MakeCredentialRequest, Ctap2UserVerifiableRequest, Ctap2UserVerificationOperation,
 };
 use crate::transport::Channel;
 
@@ -86,10 +84,7 @@ where
         pin_provider: &Box<dyn PinProvider>,
     ) -> Result<MakeCredentialResponse, Error> {
         trace!(?op, "WebAuthn MakeCredential request");
-        let ctap2_request: &Ctap2MakeCredentialRequest = &op.into();
-        let protocol = self
-            ._negotiate_protocol(ctap2_request.is_downgradable())
-            .await?;
+        let protocol = self._negotiate_protocol(op.is_downgradable()).await?;
         match protocol {
             FidoProtocol::FIDO2 => self._webauthn_make_credential_fido2(op, pin_provider).await,
             FidoProtocol::U2F => self._webauthn_make_credential_u2f(op).await,
@@ -117,14 +112,10 @@ where
         &mut self,
         op: &MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
-        let ctap2_request: &Ctap2MakeCredentialRequest = &op.into();
-        let register_request: RegisterRequest = ctap2_request
-            .try_into()
-            .or(Err(TransportError::NegotiationFailed))?;
+        let register_request: RegisterRequest = op.try_downgrade()?;
         self.ctap1_register(&register_request)
             .await?
-            .try_into()
-            .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
+            .try_upgrade(op)
     }
 
     #[instrument(skip_all, fields(dev = %self))]
@@ -134,10 +125,7 @@ where
         pin_provider: &Box<dyn PinProvider>,
     ) -> Result<GetAssertionResponse, Error> {
         trace!(?op, "WebAuthn GetAssertion request");
-        let ctap2_request: &Ctap2GetAssertionRequest = &op.into();
-        let protocol = self
-            ._negotiate_protocol(ctap2_request.is_downgradable())
-            .await?;
+        let protocol = self._negotiate_protocol(op.is_downgradable()).await?;
         match protocol {
             FidoProtocol::FIDO2 => self._webauthn_get_assertion_fido2(op, pin_provider).await,
             FidoProtocol::U2F => self._webauthn_get_assertion_u2f(op).await,
@@ -165,14 +153,28 @@ where
         &mut self,
         op: &GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error> {
-        let ctap2_request: &Ctap2GetAssertionRequest = &op.into();
-        let sign_request: SignRequest = ctap2_request
-            .try_into()
-            .or(Err(TransportError::NegotiationFailed))?;
-        self.ctap1_sign(&sign_request)
-            .await?
-            .try_into()
-            .or(Err(Error::Ctap(CtapError::UnsupportedOption)))
+        let sign_requests: Vec<SignRequest> = op.try_downgrade()?;
+
+        for sign_request in sign_requests {
+            match self.ctap1_sign(&sign_request).await {
+                Ok(response) => {
+                    debug!("Found successful candidate in allowList");
+                    return response.try_upgrade(&sign_request);
+                }
+                Err(Error::Ctap(CtapError::NoCredentials)) => {
+                    debug!("No credentials found, trying with the next.");
+                }
+                Err(err) => {
+                    error!(
+                        ?err,
+                        "Unexpected error whilst trying each credential in allowList."
+                    );
+                    return Err(err);
+                }
+            }
+        }
+        warn!("None of the credentials in the original request's allowList were found.");
+        Err(Error::Ctap(CtapError::NoCredentials))
     }
 
     #[instrument(skip_all)]

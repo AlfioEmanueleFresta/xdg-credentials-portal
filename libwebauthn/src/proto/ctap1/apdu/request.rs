@@ -123,8 +123,7 @@ impl ApduRequest {
 impl From<&Ctap1RegisterRequest> for ApduRequest {
     fn from(request: &Ctap1RegisterRequest) -> Self {
         let mut data = request.challenge.clone();
-        let app_id_hash = request.app_id_hash();
-        data.extend(app_id_hash);
+        data.extend(&request.app_id_hash);
         Self::new(
             U2F_REGISTER,
             CONTROL_BYTE_ENFORCE_UP_AND_SIGN,
@@ -149,8 +148,7 @@ impl From<&Ctap1SignRequest> for ApduRequest {
             CONTROL_BYTE_DONT_ENFORCE_UP_AND_SIGN
         };
         let mut data = request.challenge.clone();
-        let app_id_hash = request.app_id_hash();
-        data.extend(app_id_hash);
+        data.extend(&request.app_id_hash);
         data.write_u8(request.key_handle.len() as u8).unwrap();
         data.extend(&request.key_handle);
         Self::new(U2F_AUTHENTICATE, p1, 0x00, Some(&data), Some(APDU_SHORT_LE))
