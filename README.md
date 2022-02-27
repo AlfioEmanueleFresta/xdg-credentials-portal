@@ -41,8 +41,8 @@ The project is composed of multiple crates:
   - 🟠 Planned ([#12][#12]): PIN/UV Auth Protocol Two
 - PIN/UV Operations
   - 🟢 Implemented: GetPinToken
-  * 🟠 Planned ([#19][#19]): GetPinUvAuthTokenUsingUvWithPermissions
-  * 🟠 Planned ([#20][#20]): GetPinUvAuthTokenUsingPinWithPermissions
+  - 🟢 Implemented: GetPinUvAuthTokenUsingPinWithPermissions
+  - 🟠 Planned ([#19][#19]): GetPinUvAuthTokenUsingUvWithPermissions
 
 ## xdg-credential-platform
 
@@ -143,4 +143,3 @@ Alternatively, any investigation or expertise on the following would be very hel
 [#17]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/17
 [#18]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/18
 [#19]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/19
-[#20]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/20

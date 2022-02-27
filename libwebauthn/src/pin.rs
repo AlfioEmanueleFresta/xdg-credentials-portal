@@ -99,7 +99,7 @@ impl PinProvider for StdinPromptPinProvider {
     }
 }
 
-pub trait PinUvAuthProtocol {
+pub trait PinUvAuthProtocol: Send + Sync {
     fn version(&self) -> Ctap2PinUvAuthProtocol;
 
     /// encapsulate(peerCoseKey) → (coseKey, sharedSecret) | error

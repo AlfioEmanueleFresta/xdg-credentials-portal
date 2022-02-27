@@ -438,6 +438,7 @@ pub trait Ctap2UserVerifiableRequest {
     fn ensure_uv_set(&mut self);
     fn set_uv_auth(&mut self, proto: Ctap2PinUvAuthProtocol, param: &[u8]);
     fn client_data_hash(&self) -> &[u8];
+    fn permissions(&self) -> ClientPinRequestPermissions;
 }
 
 impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
@@ -458,6 +459,12 @@ impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
     fn client_data_hash(&self) -> &[u8] {
         self.hash.as_slice()
     }
+
+    fn permissions(&self) -> ClientPinRequestPermissions {
+        // GET_ASSERTION needed for pre-flight requests
+        return ClientPinRequestPermissions::MAKE_CREDENTIAL
+            | ClientPinRequestPermissions::GET_ASSERTION;
+    }
 }
 
 impl Ctap2UserVerifiableRequest for Ctap2GetAssertionRequest {
@@ -475,6 +482,10 @@ impl Ctap2UserVerifiableRequest for Ctap2GetAssertionRequest {
 
     fn client_data_hash(&self) -> &[u8] {
         self.client_data_hash.as_slice()
+    }
+
+    fn permissions(&self) -> ClientPinRequestPermissions {
+        return ClientPinRequestPermissions::GET_ASSERTION;
     }
 }
 
@@ -600,9 +611,9 @@ impl Ctap2GetInfoResponse {
     ///   I.e., in the authenticatorGetInfo response the pinUvAuthToken option ID is present and set to true,
     ///   and either clientPin option ID is present and set to true or uv option ID is present and set to true or both.
     pub fn is_uv_protected(&self) -> bool {
-        self.option_enabled("pinUvAuthToken")
-            || self.option_enabled("clientPin")
-            || self.option_enabled("uv")
+        self.option_enabled("uv") || // Deprecated no-op UV
+        self.option_enabled("clientPin") ||
+        (self.option_enabled("pinUvAuthToken") && self.option_enabled("uv"))
     }
 
     pub fn uv_operation(&self) -> Ctap2UserVerificationOperation {
@@ -705,6 +716,24 @@ impl Ctap2ClientPinRequest {
             new_pin_encrypted: None,
             pin_hash_encrypted: None,
             permissions: None,
+            permissions_rpid: None,
+        }
+    }
+
+    pub fn new_get_uv_token_with_perm(
+        protocol: Ctap2PinUvAuthProtocol,
+        public_key: PublicKey,
+        pin_hash_enc: &[u8],
+        permissions: ClientPinRequestPermissions,
+    ) -> Self {
+        Self {
+            protocol: Some(protocol),
+            command: Ctap2PinUvAuthProtocolCommand::GetPinToken,
+            key_agreement: Some(public_key),
+            uv_auth_param: None,
+            new_pin_encrypted: None,
+            pin_hash_encrypted: Some(ByteBuf::from(pin_hash_enc)),
+            permissions: Some(permissions.bits()),
             permissions_rpid: None,
         }
     }
