@@ -200,9 +200,10 @@ impl Ctap2MakeCredentialOptions {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Default)]
 pub struct Ctap2GetAssertionOptions {
     #[serde(rename = "up")]
+    /// True for all requests; False for pre-flight only.
     pub require_user_presence: bool,
 
     #[serde(rename = "uv")]
@@ -325,25 +326,6 @@ impl Ctap2MakeCredentialRequest {
         }
     }
 
-    /// Check is the relying party prefers UV to be enforced:
-    ///   "[...] the Relying Party prefers enforcing user verification (e.g., by setting
-    ///   options.authenticatorSelection.userVerification to "required", or "preferred" in the WebAuthn API) [...]"
-    pub fn is_uv_preferred(&self) -> bool {
-        self.options.map_or(false, |options| {
-            options
-                .deprecated_require_user_verification
-                .unwrap_or(false)
-        }) || self.pin_auth_param.is_some()
-    }
-
-    pub fn ensure_uv_set(&mut self) {
-        self.options = Some(Ctap2MakeCredentialOptions {
-            deprecated_require_user_verification: Some(true),
-            ..self
-                .options
-                .unwrap_or(Ctap2MakeCredentialOptions::default())
-        });
-    }
     pub fn skip_serializing_options(options: &Option<Ctap2MakeCredentialOptions>) -> bool {
         options.map_or(true, |options| options.skip_serializing())
     }
@@ -424,8 +406,8 @@ impl From<&GetAssertionRequest> for Ctap2GetAssertionRequest {
             allow: op.allow.clone(),
             extensions_cbor: op.extensions_cbor.clone(),
             options: Some(Ctap2GetAssertionOptions {
-                require_user_presence: op.require_user_presence,
-                require_user_verification: op.require_user_verification,
+                require_user_presence: true,
+                require_user_verification: op.user_verification.is_required(),
             }),
             pin_auth_param: None,
             pin_auth_proto: None,
@@ -450,6 +432,50 @@ pub struct Ctap2GetAssertionResponse {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_selected: Option<bool>,
+}
+
+pub trait Ctap2UserVerifiableRequest {
+    fn ensure_uv_set(&mut self);
+    fn set_uv_auth(&mut self, proto: Ctap2PinUvAuthProtocol, param: &[u8]);
+    fn client_data_hash(&self) -> &[u8];
+}
+
+impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
+    fn ensure_uv_set(&mut self) {
+        self.options = Some(Ctap2MakeCredentialOptions {
+            deprecated_require_user_verification: Some(true),
+            ..self
+                .options
+                .unwrap_or(Ctap2MakeCredentialOptions::default())
+        });
+    }
+
+    fn set_uv_auth(&mut self, proto: Ctap2PinUvAuthProtocol, param: &[u8]) {
+        self.pin_auth_proto = Some(proto as u32);
+        self.pin_auth_param = Some(ByteBuf::from(param));
+    }
+
+    fn client_data_hash(&self) -> &[u8] {
+        self.hash.as_slice()
+    }
+}
+
+impl Ctap2UserVerifiableRequest for Ctap2GetAssertionRequest {
+    fn ensure_uv_set(&mut self) {
+        self.options = Some(Ctap2GetAssertionOptions {
+            require_user_verification: true,
+            ..self.options.unwrap_or(Ctap2GetAssertionOptions::default())
+        });
+    }
+
+    fn set_uv_auth(&mut self, proto: Ctap2PinUvAuthProtocol, param: &[u8]) {
+        self.pin_auth_proto = Some(proto as u32);
+        self.pin_auth_param = Some(ByteBuf::from(param));
+    }
+
+    fn client_data_hash(&self) -> &[u8] {
+        self.client_data_hash.as_slice()
+    }
 }
 
 #[derive(Debug, Clone, DeserializeIndexed)]
@@ -608,7 +634,8 @@ impl Ctap2GetInfoResponse {
 #[serde_indexed(offset = 1)]
 pub struct Ctap2ClientPinRequest {
     ///pinUvAuthProtocol (0x01)
-    pub protocol: Ctap2PinUvAuthProtocol,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<Ctap2PinUvAuthProtocol>,
 
     /// subCommand (0x02)
     pub command: Ctap2PinUvAuthProtocolCommand,
@@ -641,7 +668,7 @@ pub struct Ctap2ClientPinRequest {
 impl Ctap2ClientPinRequest {
     pub fn new_get_key_agreement(protocol: Ctap2PinUvAuthProtocol) -> Self {
         Self {
-            protocol,
+            protocol: Some(protocol),
             command: Ctap2PinUvAuthProtocolCommand::GetKeyAgreement,
             key_agreement: None,
             uv_auth_param: None,
@@ -658,12 +685,25 @@ impl Ctap2ClientPinRequest {
         pin_hash_enc: &[u8],
     ) -> Self {
         Self {
-            protocol,
+            protocol: Some(protocol),
             command: Ctap2PinUvAuthProtocolCommand::GetPinToken,
             key_agreement: Some(public_key),
             uv_auth_param: None,
             new_pin_encrypted: None,
             pin_hash_encrypted: Some(ByteBuf::from(pin_hash_enc)),
+            permissions: None,
+            permissions_rpid: None,
+        }
+    }
+
+    pub fn new_get_pin_retries() -> Self {
+        Self {
+            protocol: None,
+            command: Ctap2PinUvAuthProtocolCommand::GetPinRetries,
+            key_agreement: None,
+            uv_auth_param: None,
+            new_pin_encrypted: None,
+            pin_hash_encrypted: None,
             permissions: None,
             permissions_rpid: None,
         }

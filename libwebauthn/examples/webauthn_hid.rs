@@ -5,7 +5,10 @@ use std::time::Duration;
 use rand::{thread_rng, Rng};
 use tracing_subscriber::{self, EnvFilter};
 
-use libwebauthn::ops::webauthn::{GetAssertionRequest, MakeCredentialRequest};
+use libwebauthn::ops::webauthn::{
+    GetAssertionRequest, MakeCredentialRequest, UserVerificationRequirement,
+};
+use libwebauthn::pin::{PinProvider, StdinPromptPinProvider};
 use libwebauthn::proto::ctap2::{
     Ctap2CredentialType, Ctap2PublicKeyCredentialDescriptor, Ctap2PublicKeyCredentialRpEntity,
     Ctap2PublicKeyCredentialUserEntity,
@@ -33,8 +36,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let user_id: [u8; 32] = thread_rng().gen();
     let challenge: [u8; 32] = thread_rng().gen();
 
-    // let pin_provider = StaticPinProvider::new("12312");
-    // let manager = WebAuthnManager::new(&pin_provider);
+    let pin_provider: Box<dyn PinProvider> = Box::new(StdinPromptPinProvider::new());
 
     for mut device in devices {
         println!("Selected HID authenticator: {}", &device);
@@ -49,7 +51,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             relying_party: Ctap2PublicKeyCredentialRpEntity::new("example.org", "example.org"),
             user: Ctap2PublicKeyCredentialUserEntity::new(&user_id, "mario.rossi", "Mario Rossi"),
             require_resident_key: false,
-            require_user_verification: false,
+            user_verification: UserVerificationRequirement::Preferred,
             algorithms: vec![Ctap2CredentialType::default()],
             exclude: None,
             extensions_cbor: vec![],
@@ -57,7 +59,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         };
 
         let response = channel
-            .webauthn_make_credential(&make_credentials_request)
+            .webauthn_make_credential(&make_credentials_request, &pin_provider)
             .await
             .unwrap();
         println!("WebAuthn MakeCredential response: {:?}", response);
@@ -67,13 +69,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             relying_party_id: "example.org".to_owned(),
             hash: Vec::from(challenge),
             allow: vec![credential],
-            require_user_presence: false,
-            require_user_verification: false,
+            user_verification: UserVerificationRequirement::Discouraged,
             extensions_cbor: None,
             timeout: TIMEOUT,
         };
         let response = channel
-            .webauthn_get_assertion(&get_assertion)
+            .webauthn_get_assertion(&get_assertion, &pin_provider)
             .await
             .unwrap();
         println!("WebAuthn GetAssertion response: {:?}", response);

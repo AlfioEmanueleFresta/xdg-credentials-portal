@@ -10,6 +10,31 @@ use crate::proto::ctap2::{
 
 pub type MakeCredentialResponse = Ctap2MakeCredentialResponse;
 
+#[derive(Debug, Clone, Copy)]
+pub enum UserVerificationRequirement {
+    Required,
+    Preferred,
+    Discouraged,
+}
+
+impl UserVerificationRequirement {
+    /// Check if user verification is preferred or required for this request
+    pub fn is_preferred(&self) -> bool {
+        match self {
+            Self::Required | Self::Preferred => true,
+            Self::Discouraged => false,
+        }
+    }
+
+    /// Check if user verification is strictly required for this request
+    pub fn is_required(&self) -> bool {
+        match self {
+            Self::Required => true,
+            Self::Preferred | Self::Discouraged => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MakeCredentialRequest {
     pub hash: Vec<u8>,
@@ -19,7 +44,7 @@ pub struct MakeCredentialRequest {
     /// userEntity
     pub user: Ctap2PublicKeyCredentialUserEntity,
     pub require_resident_key: bool,
-    pub require_user_verification: bool,
+    pub user_verification: UserVerificationRequirement,
     /// credTypesAndPubKeyAlgs
     pub algorithms: Vec<Ctap2CredentialType>,
     /// excludeCredentialDescriptorList
@@ -35,8 +60,7 @@ pub struct GetAssertionRequest {
     pub hash: Vec<u8>,
     pub allow: Vec<Ctap2PublicKeyCredentialDescriptor>,
     pub extensions_cbor: Option<Vec<u8>>,
-    pub require_user_presence: bool,
-    pub require_user_verification: bool,
+    pub user_verification: UserVerificationRequirement,
     pub timeout: Duration,
 }
 

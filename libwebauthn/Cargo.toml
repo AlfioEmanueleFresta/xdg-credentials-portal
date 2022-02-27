@@ -51,6 +51,7 @@ hmac = "0.12"
 cbc = { version = "0.1", features = ["alloc"] }
 cosey = { path = "../cosey" }
 solo = { path = "../solo", optional = true }
+text_io = "0.1"
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }

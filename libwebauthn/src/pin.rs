@@ -10,7 +10,7 @@ use p256::{
 };
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, warn};
 use x509_parser::nom::AsBytes;
 
 use crate::proto::{ctap2::Ctap2PinUvAuthProtocol, CtapError};
@@ -36,7 +36,7 @@ impl Default for PinUvAuthToken {
 }
 
 #[async_trait]
-pub trait PinProvider {
+pub trait PinProvider: Send + Sync {
     async fn provide_pin(&self, attempts_left: Option<u32>) -> Option<String>;
 }
 
@@ -56,11 +56,46 @@ impl StaticPinProvider {
 #[async_trait]
 impl PinProvider for StaticPinProvider {
     async fn provide_pin(&self, attempts_left: Option<u32>) -> Option<String> {
-        info!(
-            "Providing static PIN '{}' ({:?} attempts left)",
-            self.pin, attempts_left
-        );
+        if attempts_left.map_or(false, |no| no <= 1) {
+            warn!(
+                ?attempts_left,
+                "Refusing to provide static PIN, insufficient number of attempts left"
+            );
+            return None;
+        }
+
+        info!({ pin = %self.pin, ?attempts_left }, "Providing static PIN");
         Some(self.pin.clone())
+    }
+}
+
+pub struct StdinPromptPinProvider {}
+
+impl StdinPromptPinProvider {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+#[async_trait]
+impl PinProvider for StdinPromptPinProvider {
+    async fn provide_pin(&self, attempts_left: Option<u32>) -> Option<String> {
+        use std::io::{self, Write};
+        use text_io::read;
+
+        if let Some(attempts_left) = attempts_left {
+            println!("PIN: {} attempts left.", attempts_left);
+        }
+        print!("PIN: Please enter the PIN for your authenticator: ");
+        io::stdout().flush().unwrap();
+        let pin_raw = read!("{}\n");
+
+        if &pin_raw == "" {
+            println!("PIN: No PIN provided, cancelling operation.");
+            return None;
+        }
+
+        return Some(pin_raw);
     }
 }
 
