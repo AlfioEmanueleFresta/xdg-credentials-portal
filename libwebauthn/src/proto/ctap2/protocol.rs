@@ -35,6 +35,10 @@ pub trait Ctap2 {
         request: &Ctap2GetAssertionRequest,
         timeout: Duration,
     ) -> Result<Ctap2GetAssertionResponse, Error>;
+    async fn ctap2_get_next_assertion(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<Ctap2GetAssertionResponse, Error>;
     async fn ctap2_selection(&mut self, timeout: Duration) -> Result<(), Error>;
 }
 
@@ -90,6 +94,23 @@ where
         let ctap_response: Ctap2GetAssertionResponse =
             from_slice(&cbor_response.data.unwrap()).unwrap();
         debug!("CTAP2 GetAssertion successful");
+        trace!(?ctap_response);
+        Ok(ctap_response)
+    }
+
+    //
+    #[instrument(skip_all)]
+    async fn ctap2_get_next_assertion(
+        &mut self,
+        _timeout: Duration,
+    ) -> Result<Ctap2GetAssertionResponse, Error> {
+        debug!("CTAP2 GetNextAssertion request");
+        let cbor_request = CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion);
+        self.cbor_send(&cbor_request, TIMEOUT_GET_INFO).await?;
+        let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
+        let ctap_response: Ctap2GetAssertionResponse =
+            from_slice(&cbor_response.data.unwrap()).unwrap();
+        debug!("CTAP2 GetNextAssertion successful");
         trace!(?ctap_response);
         Ok(ctap_response)
     }

@@ -27,6 +27,7 @@ pub enum Ctap2CommandCode {
     AuthenticatorGetAssertion = 0x02,
     AuthenticatorGetInfo = 0x04,
     AuthenticatorClientPin = 0x06,
+    AuthenticatorGetNextAssertion = 0x08,
     AuthenticatorSelection = 0x0B,
 }
 
@@ -58,7 +59,9 @@ impl Ctap2PublicKeyCredentialRpEntity {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ctap2PublicKeyCredentialUserEntity {
     pub id: ByteBuf,
-    pub name: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 
     // TODO(afresta): Validation as per https://www.w3.org/TR/webauthn/#sctn-user-credential-params
     #[serde(rename = "displayName")]
@@ -71,7 +74,7 @@ impl Ctap2PublicKeyCredentialUserEntity {
     pub fn dummy() -> Self {
         Self {
             id: ByteBuf::from([1]),
-            name: String::from("dummy"),
+            name: Some(String::from("dummy")),
             display_name: None,
         }
     }
@@ -81,7 +84,7 @@ impl Ctap2PublicKeyCredentialUserEntity {
     pub fn new(id: &[u8], name: &str, display_name: &str) -> Self {
         Self {
             id: ByteBuf::from(id),
-            name: String::from(name),
+            name: Some(String::from(name)),
             display_name: Some(String::from(display_name)),
         }
     }

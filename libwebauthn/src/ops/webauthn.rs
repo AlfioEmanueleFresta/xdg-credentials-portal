@@ -93,7 +93,26 @@ impl MakeCredentialRequest {
     }
 }
 
-pub type GetAssertionResponse = Ctap2GetAssertionResponse;
+#[derive(Debug, Clone)]
+pub struct GetAssertionResponse {
+    pub assertions: Vec<Ctap2GetAssertionResponse>,
+}
+
+impl From<&[Ctap2GetAssertionResponse]> for GetAssertionResponse {
+    fn from(assertions: &[Ctap2GetAssertionResponse]) -> Self {
+        Self {
+            assertions: assertions.to_owned(),
+        }
+    }
+}
+
+impl From<Ctap2GetAssertionResponse> for GetAssertionResponse {
+    fn from(assertion: Ctap2GetAssertionResponse) -> Self {
+        Self {
+            assertions: vec![assertion],
+        }
+    }
+}
 
 pub trait DowngradableRequest<T> {
     fn is_downgradable(&self) -> bool;

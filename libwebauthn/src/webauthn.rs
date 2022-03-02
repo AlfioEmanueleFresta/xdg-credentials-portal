@@ -146,7 +146,15 @@ where
             op.timeout,
         )
         .await?;
-        self.ctap2_get_assertion(&ctap2_request, op.timeout).await
+
+        let response = self.ctap2_get_assertion(&ctap2_request, op.timeout).await?;
+        let count = response.credentials_count.unwrap_or(1);
+        let mut assertions = vec![response];
+        for i in 1..count {
+            debug!({ i }, "Fetching additional credential");
+            assertions.push(self.ctap2_get_next_assertion(op.timeout).await?);
+        }
+        Ok(assertions.as_slice().into())
     }
 
     async fn _webauthn_get_assertion_u2f(

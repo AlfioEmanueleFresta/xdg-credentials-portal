@@ -12,8 +12,9 @@ use crate::ops::webauthn::{GetAssertionResponse, MakeCredentialResponse};
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
 use crate::proto::ctap2::{
-    Ctap2AttestationStatement, Ctap2COSEAlgorithmIdentifier, Ctap2MakeCredentialResponse,
-    Ctap2PublicKeyCredentialDescriptor, Ctap2PublicKeyCredentialType, FidoU2fAttestationStmt,
+    Ctap2AttestationStatement, Ctap2COSEAlgorithmIdentifier, Ctap2GetAssertionResponse,
+    Ctap2MakeCredentialResponse, Ctap2PublicKeyCredentialDescriptor, Ctap2PublicKeyCredentialType,
+    FidoU2fAttestationStmt,
 };
 use crate::webauthn::{CtapError, Error};
 
@@ -175,7 +176,7 @@ impl UpgradableResponse<GetAssertionResponse, SignRequest> for SignResponse {
         auth_data.write_u32::<BigEndian>(sign_count).unwrap();
 
         // Let authenticatorGetAssertionResponse be a CBOR map with the following keys whose values are as follows: [..]
-        let upgraded_response = GetAssertionResponse {
+        let upgraded_response: GetAssertionResponse = Ctap2GetAssertionResponse {
             credential_id: Some(Ctap2PublicKeyCredentialDescriptor {
                 r#type: Ctap2PublicKeyCredentialType::PublicKey,
                 id: ByteBuf::from(request.key_handle.clone()),
@@ -186,7 +187,8 @@ impl UpgradableResponse<GetAssertionResponse, SignRequest> for SignResponse {
             user: None,
             credentials_count: None,
             user_selected: None,
-        };
+        }
+        .into();
 
         trace!(?upgraded_response);
         Ok(upgraded_response)

@@ -25,24 +25,24 @@ The project is composed of multiple crates:
 ### Platform functionality
 
 - FIDO U2F
-  - 🟢 Implemented: Registration (U2F_REGISTER)
-  - 🟢 Implemented: Authentication (U2F_AUTHENTICATE)
-  - 🟢 Implemented: Version (U2F_VERSION)
+  - 🟢 Registration (U2F_REGISTER)
+  - 🟢 Authentication (U2F_AUTHENTICATE)
+  - 🟢 Version (U2F_VERSION)
 - FIDO2
-  - 🟢 Implemented: Create credential
-  - 🟢 Implemented: Verify assertion
-  - 🟢 Implemented: Biometric user verification
-  - 🟠 Planned ([#17][#17]): Resident keys
+  - 🟢 Create credential
+  - 🟢 Verify assertion
+  - 🟢 Biometric user verification
+  - 🟢 Discoverable credentials (resident keys)
 - FIDO2 to FIDO U2F downgrade
-  - 🟢 Implemented: Basic functionality
-  - 🟢 Implemented: Support for excludeList and pre-flight requests
+  - 🟢 Basic functionality
+  - 🟢 Support for excludeList and pre-flight requests
 - PIN/UV Protocols
-  - 🟢 Implemented: PIN/UV Auth Protocol One
-  - 🟢 Implemented: PIN/UV Auth Protocol Two
+  - 🟢 PIN/UV Auth Protocol One
+  - 🟢 PIN/UV Auth Protocol Two
 - PIN/UV Operations
-  - 🟢 Implemented: GetPinToken
-  - 🟢 Implemented: GetPinUvAuthTokenUsingPinWithPermissions
-  - 🟢 Implemented: GetPinUvAuthTokenUsingUvWithPermissions
+  - 🟢 GetPinToken
+  - 🟢 GetPinUvAuthTokenUsingPinWithPermissions
+  - 🟢 GetPinUvAuthTokenUsingUvWithPermissions
 
 ## xdg-credential-platform
 
