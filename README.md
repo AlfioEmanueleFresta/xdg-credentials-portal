@@ -17,10 +17,10 @@ The project is composed of multiple crates:
 
 ### Transports
 
-|                      | USB (HID)                 | Bluetooth Low Energy (BLE) | NFC                   | TPM 2.0 (Platform)    |
-| -------------------- | ------------------------- | -------------------------- | --------------------- | --------------------- |
+|                      | USB (HID)                 | Bluetooth Low Energy (BLE)  | NFC                   | TPM 2.0 (Platform)    |
+| -------------------- | ------------------------- | --------------------------- | --------------------- | --------------------- |
 | **FIDO U2F**         | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
-| **WebAuthn (FIDO2)** | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
+| **WebAuthn (FIDO2)** | 🟢 Supported (via hidapi) | 🟠 Planned ([#3](#3))      | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
 
 ### Platform functionality
 
