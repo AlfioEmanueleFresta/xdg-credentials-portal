@@ -116,12 +116,37 @@ impl<'a> Channel for BleChannel<'a> {
     }
 
     #[instrument(level = Level::DEBUG, skip_all)]
-    async fn cbor_send(&self, _: &CborRequest, _: std::time::Duration) -> Result<(), Error> {
-        todo!()
+    async fn cbor_send(&self, request: &CborRequest, timeout: std::time::Duration) -> Result<(), Error> {
+        debug!("Sending CBOR request");
+        trace!(?request);
+
+        let cbor_request = request.raw_long().or(Err(TransportError::InvalidFraming))?;
+        let request_frame = BleFrame::new(BleCommand::Msg, &cbor_request);
+        bluez::frame_send(&self.connection, &request_frame, timeout)
+            .await
+            .or(Err(Error::Transport(TransportError::ConnectionFailed)))?;
+        Ok(())
     }
 
     #[instrument(level = Level::DEBUG, skip_all)]
-    async fn cbor_recv(&self, _: std::time::Duration) -> Result<CborResponse, Error> {
-        todo!()
+    async fn cbor_recv(&self, timeout: std::time::Duration) -> Result<CborResponse, Error> {
+        let response_frame = bluez::frame_recv(&self.connection, timeout)
+            .await
+            .or(Err(Error::Transport(TransportError::ConnectionFailed)))?;
+        match response_frame.cmd {
+            BleCommand::Error => return Err(Error::Transport(TransportError::InvalidFraming)), // Encapsulation layer error
+            BleCommand::Cancel => return Err(Error::Ctap(CtapError::KeepAliveCancel)),
+            BleCommand::Keepalive | BleCommand::Ping => return Err(Error::Ctap(CtapError::Other)), // Unexpected
+            BleCommand::Msg => {}
+        }
+        let cbor_response_packet = &response_frame.data;
+        let cbor_response: CborResponse = cbor_response_packet
+            .try_into()
+            .or(Err(TransportError::InvalidFraming))?;
+
+        debug!("Received CBOR response");
+        trace!(?cbor_response);
+        Ok(cbor_response)
+
     }
 }
