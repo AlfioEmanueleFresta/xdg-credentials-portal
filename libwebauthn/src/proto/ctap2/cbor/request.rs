@@ -2,6 +2,8 @@ extern crate serde_cbor;
 
 use serde_cbor::ser::to_vec;
 
+use std::io::Error as IOError;
+
 use crate::proto::ctap2::model::Ctap2ClientPinRequest;
 use crate::proto::ctap2::model::Ctap2CommandCode;
 use crate::proto::ctap2::model::Ctap2GetAssertionRequest;
@@ -25,6 +27,12 @@ impl CborRequest {
         let mut data = vec![self.command as u8];
         data.extend(&self.encoded_data);
         data
+    }
+
+    pub fn raw_long(&self) -> Result<Vec<u8>, IOError> {
+        let mut data = vec![self.command as u8];
+        data.extend(self.encoded_data.iter().copied());
+        Ok(data)
     }
 }
 
