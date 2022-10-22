@@ -15,13 +15,6 @@ The project is composed of multiple crates:
 
 ## libwebauthn
 
-### Transports
-
-|                      | USB (HID)                 | Bluetooth Low Energy (BLE)  | NFC                   | TPM 2.0 (Platform)    |
-| -------------------- | ------------------------- | --------------------------- | --------------------- | --------------------- |
-| **FIDO U2F**         | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
-| **WebAuthn (FIDO2)** | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
-
 ### Platform functionality
 
 - FIDO U2F
@@ -43,6 +36,19 @@ The project is composed of multiple crates:
   - 🟢 GetPinToken
   - 🟢 GetPinUvAuthTokenUsingPinWithPermissions
   - 🟢 GetPinUvAuthTokenUsingUvWithPermissions
+- [Passkey Authentication][passkeys]
+  - 🟢 Discoverable credentials (resident keys)
+  - 🔴 Cloud-Assisted BLE (caBLE) transport ([#31][#31] blocked: spec not yet published)
+
+
+
+### Transports
+
+|                      | USB (HID)                 | Bluetooth Low Energy (BLE)  | NFC                   | TPM 2.0 (Platform)    |
+| -------------------- | ------------------------- | --------------------------- | --------------------- | --------------------- |
+| **FIDO U2F**         | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
+| **WebAuthn (FIDO2)** | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
+
 
 ## xdg-credential-platform
 
@@ -140,3 +146,5 @@ Alternatively, any investigation or expertise on the following would be very hel
 [#5]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/5
 [#17]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/17
 [#18]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/18
+[#31]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/31
+[passkeys]: https://fidoalliance.org/passkeys/
