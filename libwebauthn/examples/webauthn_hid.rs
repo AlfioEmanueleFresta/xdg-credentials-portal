@@ -54,7 +54,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             user_verification: UserVerificationRequirement::Preferred,
             algorithms: vec![Ctap2CredentialType::default()],
             exclude: None,
-            extensions_cbor: vec![],
+            extensions: None,
             timeout: TIMEOUT,
         };
 
@@ -83,7 +83,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             hash: Vec::from(challenge),
             allow: vec![credential],
             user_verification: UserVerificationRequirement::Discouraged,
-            extensions_cbor: None,
+            extensions: None,
             timeout: TIMEOUT,
         };
 

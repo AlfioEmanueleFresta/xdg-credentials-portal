@@ -17,6 +17,9 @@ use crate::ops::webauthn::MakeCredentialRequest;
 use crate::proto::ctap1::Ctap1Transport;
 use crate::transport::error::CtapError;
 
+use super::Ctap2ExtensionInput;
+use super::Ctap2ExtensionOutput;
+
 // 32 (rpIdHash) + 1 (flags) + 4 (signCount) + 16 (aaguid)
 const AUTHENTICATOR_DATA_PUBLIC_KEY_OFFSET: usize = 53;
 
@@ -307,7 +310,7 @@ pub struct Ctap2MakeCredentialRequest {
 
     /// extensions (0x06)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub extensions_cbor: Option<Vec<u8>>,
+    pub extensions: Option<Ctap2ExtensionInput>,
 
     /// options (0x07)
     #[serde(skip_serializing_if = "Self::skip_serializing_options")]
@@ -340,11 +343,7 @@ impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
             user: op.user.clone(),
             algorithms: op.algorithms.clone(),
             exclude: op.exclude.clone(),
-            extensions_cbor: if op.extensions_cbor.is_empty() {
-                None
-            } else {
-                Some(op.extensions_cbor.clone())
-            },
+            extensions: op.extensions.clone(),
             options: Some(Ctap2MakeCredentialOptions {
                 require_resident_key: if op.require_resident_key {
                     Some(true)
@@ -384,7 +383,7 @@ pub struct Ctap2GetAssertionRequest {
 
     /// extensions (0x04)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub extensions_cbor: Option<Vec<u8>>,
+    pub extensions: Option<Ctap2ExtensionOutput>,
 
     /// options (0x05)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -405,7 +404,7 @@ impl From<&GetAssertionRequest> for Ctap2GetAssertionRequest {
             relying_party_id: op.relying_party_id.clone(),
             client_data_hash: ByteBuf::from(op.hash.clone()),
             allow: op.allow.clone(),
-            extensions_cbor: op.extensions_cbor.clone(),
+            extensions: op.extensions.clone(),
             options: Some(Ctap2GetAssertionOptions {
                 require_user_presence: true,
                 require_user_verification: op.user_verification.is_required(),

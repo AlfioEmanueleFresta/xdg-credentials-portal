@@ -7,9 +7,10 @@ use crate::{
     proto::{
         ctap1::{Ctap1RegisteredKey, Ctap1Version},
         ctap2::{
-            Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2GetAssertionResponse,
-            Ctap2MakeCredentialResponse, Ctap2PublicKeyCredentialDescriptor,
-            Ctap2PublicKeyCredentialRpEntity, Ctap2PublicKeyCredentialUserEntity,
+            Ctap2COSEAlgorithmIdentifier, Ctap2CredentialType, Ctap2ExtensionInput,
+            Ctap2GetAssertionResponse, Ctap2MakeCredentialResponse,
+            Ctap2PublicKeyCredentialDescriptor, Ctap2PublicKeyCredentialRpEntity,
+            Ctap2PublicKeyCredentialUserEntity,
         },
     },
     webauthn::CtapError,
@@ -61,7 +62,7 @@ pub struct MakeCredentialRequest {
     /// excludeCredentialDescriptorList
     pub exclude: Option<Vec<Ctap2PublicKeyCredentialDescriptor>>,
     /// extensions
-    pub extensions_cbor: Vec<u8>,
+    pub extensions: Option<Ctap2ExtensionInput>,
     pub timeout: Duration,
 }
 
@@ -70,7 +71,7 @@ pub struct GetAssertionRequest {
     pub relying_party_id: String,
     pub hash: Vec<u8>,
     pub allow: Vec<Ctap2PublicKeyCredentialDescriptor>,
-    pub extensions_cbor: Option<Vec<u8>>,
+    pub extensions: Option<Ctap2ExtensionInput>,
     pub user_verification: UserVerificationRequirement,
     pub timeout: Duration,
 }
@@ -84,7 +85,7 @@ impl MakeCredentialRequest {
             user: Ctap2PublicKeyCredentialUserEntity::dummy(),
             algorithms: vec![Ctap2CredentialType::default()],
             exclude: None,
-            extensions_cbor: vec![],
+            extensions: None,
             origin: "example.org".to_owned(),
             require_resident_key: false,
             user_verification: UserVerificationRequirement::Preferred,

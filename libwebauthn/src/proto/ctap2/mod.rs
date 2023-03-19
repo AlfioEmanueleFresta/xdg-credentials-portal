@@ -2,9 +2,12 @@ extern crate async_trait;
 
 pub mod cbor;
 
+mod extension;
 mod model;
 mod protocol;
 
+pub use extension::input::Ctap2ExtensionInput;
+pub use extension::output::Ctap2ExtensionOutput;
 pub use model::Ctap2GetInfoResponse;
 pub use model::{
     ClientPinRequestPermissions, Ctap2AttestationStatement, Ctap2COSEAlgorithmIdentifier,
