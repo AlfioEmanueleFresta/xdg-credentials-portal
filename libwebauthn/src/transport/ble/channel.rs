@@ -116,7 +116,11 @@ impl<'a> Channel for BleChannel<'a> {
     }
 
     #[instrument(level = Level::DEBUG, skip_all)]
-    async fn cbor_send(&self, request: &CborRequest, timeout: std::time::Duration) -> Result<(), Error> {
+    async fn cbor_send(
+        &self,
+        request: &CborRequest,
+        timeout: std::time::Duration,
+    ) -> Result<(), Error> {
         debug!("Sending CBOR request");
         trace!(?request);
 
@@ -147,6 +151,5 @@ impl<'a> Channel for BleChannel<'a> {
         debug!("Received CBOR response");
         trace!(?cbor_response);
         Ok(cbor_response)
-
     }
 }
