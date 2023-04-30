@@ -318,8 +318,8 @@ impl ECPrivateKeyPinUvAuthProtocol for PinUvAuthProtocolTwo {
         //   HKDF-SHA-256(salt = 32 zero bytes, IKM = Z, L = 32, info = "CTAP2 HMAC key") ||
         //   HKDF-SHA-256(salt = 32 zero bytes, IKM = Z, L = 32, info = "CTAP2 AES key")
         let salt: &[u8] = &[0u8; 32];
-        let mut output = hkdf_sha256(salt, ikm, "CTAP2 HMAC key".as_bytes());
-        output.extend(hkdf_sha256(salt, ikm, "CTAP2 AES key".as_bytes()));
+        let mut output = hkdf_sha256(Some(salt), ikm, "CTAP2 HMAC key".as_bytes());
+        output.extend(hkdf_sha256(Some(salt), ikm, "CTAP2 AES key".as_bytes()));
         output
     }
 }
@@ -407,8 +407,8 @@ pub fn hmac_sha256(key: &[u8], message: &[u8]) -> Vec<u8> {
     hmac.finalize().into_bytes().to_vec()
 }
 
-pub fn hkdf_sha256(salt: &[u8], ikm: &[u8], info: &[u8]) -> Vec<u8> {
-    let hk = Hkdf::<Sha256>::new(Some(salt), &ikm);
+pub fn hkdf_sha256(salt: Option<&[u8]>, ikm: &[u8], info: &[u8]) -> Vec<u8> {
+    let hk = Hkdf::<Sha256>::new(salt, &ikm);
     let mut okm = [0u8; 32]; // fixed L = 32
     hk.expand(info, &mut okm)
         .expect("32 is a valid length for Sha256 to output");

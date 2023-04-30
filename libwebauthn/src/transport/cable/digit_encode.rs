@@ -2,46 +2,40 @@ const CHUNK_SIZE: usize = 7;
 const CHUNK_DIGITS: usize = 17;
 const ZEROS: &str = "00000000000000000";
 
+/// The number of digits needed to encode each length of trailing data from 6 bytes down to zero,
+/// i.e. it’s 15, 13, 10, 8, 5, 3, 0 written in hex.
+const PARTIAL_CHUNK_DIGITS: usize = 0x0fda8530;
 
-pub fn digit_encode(bytes: &[u8]) -> String {
-    let mut input = Vec::from(bytes);
+pub fn digit_encode(input: &[u8]) -> String {
     let mut output = String::new();
-
+    let mut input = input;
     while input.len() >= CHUNK_SIZE {
-        let chunk: &[u8] = &input[..CHUNK_SIZE];
-        // TODO: [u8] to u64
-        let chunk: u64 = todo!();
-        let v = format!("{}", chunk);
-
+        let mut chunk = [0u8; 8];
+        chunk[..CHUNK_SIZE].copy_from_slice(&input[..CHUNK_SIZE]);
+        let v = u64::from_le_bytes(chunk);
+        let v = v.to_string();
+        output.push_str(&ZEROS[..CHUNK_DIGITS - v.len()]);
+        output.push_str(&v);
+        input = &input[CHUNK_SIZE..];
     }
+    if !input.is_empty() {
+        let digits = 15 & (PARTIAL_CHUNK_DIGITS >> (4 * input.len()));
+        let mut chunk = [0u8; 8];
+        chunk[..input.len()].copy_from_slice(input);
+        let v = u64::from_le_bytes(chunk);
+        let v = v.to_string();
+        output.push_str(&ZEROS[..digits - v.len()]);
+        output.push_str(&v);
+    }
+    output
+}
 
-    "ok".to_owned()
-    //
-    /// fundigitEncode(d []byte) string {
-        // const chunkSize = 7
-        // const chunkDigits = 17
-        // const zeros = "00000000000000000"
-        // var ret string
-        // for len(d) >= chunkSize {
-            // var chunk [8]byte
-            // copy(chunk[:], d[:chunkSize])
-            // v := strconv.FormatUint(binary.LittleEndian.Uint64(chunk[:]), 10)
-            // ret += zeros[:chunkDigits-len(v)]
-            // ret += v
-            // d = d[chunkSize:]
-        // }
-        // if len(d) != 0 {
-            // // partialChunkDigits is the number of digits needed to encode
-            // // each length of trailing data from 6 bytes down to zero. I.e.
-            // // it’s 15, 13, 10, 8, 5, 3, 0 written in hex.
-            // const partialChunkDigits = 0x0fda8530
-            // digits := 15 & (partialChunkDigits >> (4 * len(d)))
-            // var chunk [8]byte
-            // copy(chunk[:], d)
-            // v := strconv.FormatUint(binary.LittleEndian.Uint64(chunk[:]), 10)
-            // ret += zeros[:digits-len(v)]
-            // ret += v
-        // }
-        // return ret
-    // }
+#[cfg(test)]
+mod tests {
+    use super::digit_encode;
+
+    #[test]
+    fn test_digit_encode() {
+        assert_eq!(digit_encode(b"hello world"), "335311851610699281684828783")
+    }
 }

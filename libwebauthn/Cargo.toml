@@ -46,8 +46,8 @@ rand = "0.8.4"
 p256 = { version = "0.10", features = ["ecdh", "arithmetic", "serde"] }
 heapless = "0.7"
 # cosey = "0.3.0"
-aes = "0.8"
-hmac = "0.12"
+aes = "0.8.2"
+hmac = "0.12.1"
 cbc = { version = "0.1", features = ["alloc"] }
 hkdf = "0.12"
 cosey = { path = "../cosey" }

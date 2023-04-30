@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Cursor as IOCursor;
 use std::thread::sleep;
 use std::time::Duration;
@@ -448,4 +449,51 @@ fn receive_fragments(
         .map(move |e| Vec::from(e))
         .collect();
     fragments
+}
+
+/// Finds all devices that advertise a given service UUID, and returns a map of device to service data.
+#[instrument(level = Level::DEBUG, skip_all)]
+fn devices_by_service_blocking(uuid: &str) -> Result<HashMap<Device, Vec<u8>>, Error> {
+    let session = BluetoothSession::create_session(None).or(Err(Error::Unavailable))?;
+    let adapter = BluetoothAdapter::init(&session).or(Err(Error::Unavailable))?;
+    let devices = adapter
+        .get_device_list()
+        .or(Err(Error::Unavailable))?
+        .iter()
+        .map(|device_path| BluetoothDevice::new(&session, device_path.into()))
+        .map(|device| (device.clone(), device.get_service_data()))
+        .filter_map(|(device, service_data)| match service_data {
+            Ok(data) => {
+                if let Some(data) = data.get(uuid) {
+                    Some((device, data.clone()))
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        })
+        .map(|(device, data)| {
+            (
+                Device::new(
+                    &device.get_id(),
+                    &device.get_alias().unwrap(),
+                    device.is_paired().unwrap(),
+                    device.is_connected().unwrap(),
+                ),
+                data,
+            )
+        })
+        .collect();
+    Ok(devices)
+}
+
+pub async fn devices_by_service(uuid: &str) -> Result<HashMap<Device, Vec<u8>>, Error> {
+    let span = span!(Level::DEBUG, "devices_by_service");
+    let uuid = uuid.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let _enter = span.enter();
+        devices_by_service_blocking(&uuid)
+    })
+    .await
+    .unwrap()
 }

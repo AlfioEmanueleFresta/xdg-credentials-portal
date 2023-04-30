@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::error::Error;
 use std::time::Duration;
 
@@ -46,7 +45,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     println!("Generated QR code: {:?}", qr_code);
 
     println!("Awaiting QR code scan and BLE advertisement...");
-    let device: CableQrCodeDevice = cable_discovery
+    let mut device: CableQrCodeDevice = cable_discovery
         .await_advertisement(&adv_data, Some(&mut device_info_store))
         .await?;
 
@@ -54,14 +53,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     println!("Device advertisement received: {:?}", device);
 
     println!("Attempting connection to tunnel service.");
-    let mut channel = device.channel();
+    let mut channel = device.channel().await.unwrap();
 
     let user_id: [u8; 32] = thread_rng().gen();
     let challenge: [u8; 32] = thread_rng().gen();
 
     let pin_provider: Box<dyn PinProvider> = Box::new(StdinPromptPinProvider::new());
-
-    println!("Selected HID authenticator: {}", &device);
 
     // Make Credentials ceremony
     let make_credentials_request = MakeCredentialRequest {

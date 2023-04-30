@@ -1,7 +1,5 @@
-use std::{
-    fmt::{Display, Formatter},
-    time::Duration,
-};
+use std::fmt::{Display, Formatter};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tracing::instrument;
