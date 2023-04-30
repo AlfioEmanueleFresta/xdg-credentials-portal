@@ -98,7 +98,6 @@ where
         Ok(ctap_response)
     }
 
-    //
     #[instrument(skip_all)]
     async fn ctap2_get_next_assertion(
         &mut self,

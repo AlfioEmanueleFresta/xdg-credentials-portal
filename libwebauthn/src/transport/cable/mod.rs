@@ -1,7 +1,11 @@
 use std::fmt::Display;
 
 pub mod channel;
+pub mod digit_encode;
+pub mod discovery;
 pub mod known_devices;
+pub mod qr_code_device;
+pub mod tunnel;
 
 use super::Transport;
 
