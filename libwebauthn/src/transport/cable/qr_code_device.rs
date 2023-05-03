@@ -1,12 +1,15 @@
 use std::fmt::{Debug, Display};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use p256::ecdh::EphemeralSecret;
-use p256::AffinePoint as P256AffinePoint;
+use p256::elliptic_curve::sec1::ToEncodedPoint;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::Serialize;
+use serde_bytes::ByteBuf;
 use serde_indexed::SerializeIndexed;
+use tokio::time::sleep;
 use tracing::{debug, instrument, trace};
 
 use super::known_devices::CableKnownDeviceInfoStore;
@@ -20,11 +23,9 @@ use crate::transport::error::Error;
 use crate::transport::Device;
 use crate::webauthn::TransportError;
 
-const CABLE_UUID: &str = "0000fff9-0000-1000-8000-00805f9b34fb";
+const CABLE_UUID_FIDO: &str = "0000fff9-0000-1000-8000-00805f9b34fb";
+const CABLE_UUID_GOOGLE: &str = "0000fde2-0000-1000-8000-00805f9b34fb";
 const ADVERTISEMENT_WAIT_LOOP_MS: u64 = 2000;
-
-#[derive(Debug)]
-pub struct CableAdvertisementData {}
 
 #[derive(Debug, Clone, Copy)]
 
@@ -48,9 +49,9 @@ impl Serialize for QrCodeOperationHint {
 #[derive(Debug, SerializeIndexed)]
 pub struct CableQrCode {
     // Key 0: a 33-byte, P-256, X9.62, compressed public key.
-    pub public_key: P256AffinePoint,
+    pub public_key: ByteBuf,
     // Key 1: a 16-byte random QR secret.
-    pub qr_secret: [u8; 16],
+    pub qr_secret: ByteBuf,
     /// Key 2: the number of assigned tunnel server domains known to this implementation.
     pub known_tunnel_domains_count: u8,
     /// Key 3: (optional) the current time in epoch seconds.
@@ -113,14 +114,14 @@ impl<'d> CableQrCodeDevice<'d> {
         store: Option<&'d mut Box<dyn CableKnownDeviceInfoStore>>,
     ) -> Self {
         let private_key = EphemeralSecret::random(&mut OsRng);
-        let public_key = private_key.public_key().as_affine().to_owned();
+        let public_key = private_key.public_key().as_affine().to_encoded_point(true);
         let mut qr_secret = [0u8; 16];
         OsRng::default().fill_bytes(&mut qr_secret);
 
         Self {
             qr_code: CableQrCode {
-                public_key,
-                qr_secret,
+                public_key: ByteBuf::from(public_key.as_bytes()),
+                qr_secret: ByteBuf::from(qr_secret),
                 known_tunnel_domains_count: KNOWN_TUNNEL_DOMAINS.len() as u8,
                 current_time: None,
                 operation_hint: hint,
@@ -140,32 +141,43 @@ impl CableQrCodeDevice<'_> {
     }
 
     async fn await_advertisement(&self) -> Result<(FidoDevice, Vec<u8>), Error> {
+        bluez::manager::start_discovery(&vec![
+            CABLE_UUID_FIDO.to_owned(),
+            CABLE_UUID_GOOGLE.to_owned(),
+        ])
+        .await
+        .or(Err(Error::Transport(TransportError::TransportUnavailable)))?;
+
         loop {
-            let devices_service_data = bluez::manager::devices_by_service(CABLE_UUID)
+            let devices_service_data = bluez::manager::devices_by_service(CABLE_UUID_GOOGLE)
                 .await
                 .or(Err(Error::Transport(TransportError::TransportUnavailable)))?;
             debug!({ ?devices_service_data }, "Found devices with service data");
-    
-            let device = devices_service_data.into_iter().map(|(device, data)| {
-                let eid_key = derive(&self.qr_code.qr_secret, None, KeyPurpose::EIDKey);
-                trace!(?device, ?data, ?eid_key);
-                let decrypted = trial_decrypt_advert(&eid_key, &data);
-                trace!(?decrypted);
-                (device, decrypted)
-            })
-            .find(|(_, decrypted)| decrypted.is_some());
-    
+
+            let device = devices_service_data
+                .into_iter()
+                .map(|(device, data)| {
+                    let eid_key = derive(&self.qr_code.qr_secret, None, KeyPurpose::EIDKey);
+                    trace!(?device, ?data, ?eid_key);
+                    let decrypted = trial_decrypt_advert(&eid_key, &data);
+                    trace!(?decrypted);
+                    (device, decrypted)
+                })
+                .find(|(_, decrypted)| decrypted.is_some());
+
             if let Some((device, decrypted)) = device {
-                debug!(?device, ?decrypted, "Successfully decrypted advertisement from device");
+                debug!(
+                    ?device,
+                    ?decrypted,
+                    "Successfully decrypted advertisement from device"
+                );
                 return Ok((device, decrypted.unwrap()));
             }
 
             debug!("No devices found with matching advertisement, waiting for new advertisement");
-            sleep(Duration::from_millis(ADVERTISEMENT_WAIT_LOOP_MS as u64));
+            sleep(Duration::from_millis(ADVERTISEMENT_WAIT_LOOP_MS as u64)).await;
         }
     }
-
-    
 }
 
 unsafe impl Send for CableQrCodeDevice<'_> {}
@@ -177,12 +189,12 @@ impl Display for CableQrCodeDevice<'_> {
     }
 }
 
-impl
-
 #[async_trait]
 impl<'d> Device<'d, Cable, CableChannel<'d>> for CableQrCodeDevice<'_> {
     async fn channel(&'d mut self) -> Result<CableChannel<'d>, Error> {
         let (device, advert) = self.await_advertisement().await?;
+
+        todo!()
     }
 
     #[instrument(skip_all)]
@@ -190,3 +202,6 @@ impl<'d> Device<'d, Cable, CableChannel<'d>> for CableQrCodeDevice<'_> {
         todo!()
     }
 }
+
+// TODO: unit tests
+// https://source.chromium.org/chromium/chromium/src/+/main:device/fido/cable/v2_handshake_unittest.cc

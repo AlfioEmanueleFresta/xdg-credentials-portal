@@ -1,13 +1,11 @@
 use std::error::Error;
 use std::time::Duration;
 
-use libwebauthn::transport::cable::discovery::CableDiscoveryManager;
+use libwebauthn::transport::cable::channel::CableChannel;
 use libwebauthn::transport::cable::known_devices::{
     CableKnownDeviceInfoStore, EphemeralDeviceInfoStore,
 };
-use libwebauthn::transport::cable::qr_code_device::{
-    CableAdvertisementData, CableQrCode, CableQrCodeDevice,
-};
+use libwebauthn::transport::cable::qr_code_device::{CableQrCodeDevice, QrCodeOperationHint};
 use rand::{thread_rng, Rng};
 use tracing_subscriber::{self, EnvFilter};
 
@@ -37,23 +35,20 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut device_info_store: Box<dyn CableKnownDeviceInfoStore> =
         Box::new(EphemeralDeviceInfoStore::default());
-    let cable_discovery = CableDiscoveryManager::default();
 
-    // Generate a QR code and wait for advertisement.
-    let (qr_code, adv_data): (CableQrCode, CableAdvertisementData) =
-        cable_discovery.generate_qr_code().await;
-    println!("Generated QR code: {:?}", qr_code);
-
-    println!("Awaiting QR code scan and BLE advertisement...");
-    let mut device: CableQrCodeDevice = cable_discovery
-        .await_advertisement(&adv_data, Some(&mut device_info_store))
-        .await?;
+    // Create QR code
+    let mut device = CableQrCodeDevice::new_persistent(
+        QrCodeOperationHint::MakeCredential,
+        &mut device_info_store,
+    );
+    println!(
+        "Created QR code, awaiting for advertisement: {}",
+        device.qr_code.to_string()
+    );
 
     // Connect to a known device
-    println!("Device advertisement received: {:?}", device);
-
-    println!("Attempting connection to tunnel service.");
-    let mut channel = device.channel().await.unwrap();
+    let mut channel: CableChannel = device.channel().await.unwrap();
+    println!("Tunnel established {:?}", channel);
 
     let user_id: [u8; 32] = thread_rng().gen();
     let challenge: [u8; 32] = thread_rng().gen();
