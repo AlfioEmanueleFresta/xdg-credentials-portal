@@ -98,6 +98,28 @@ impl Debug for CableQrCodeDevice<'_> {
     }
 }
 
+#[derive(Debug)]
+struct DecryptedAdvert {
+    nonce: [u8; 10],
+    routing_id: [u8; 3],
+    encoded_tunnel_server_domain: u16,
+}
+
+impl From<&[u8]> for DecryptedAdvert {
+    fn from(plaintext: &[u8]) -> Self {
+        let mut nonce = [0u8; 10];
+        nonce.copy_from_slice(&plaintext[1..11]);
+        let mut routing_id = [0u8; 3];
+        routing_id.copy_from_slice(&plaintext[11..14]);
+        let encoded_tunnel_server_domain = u16::from_le_bytes([plaintext[14], plaintext[15]]);
+        Self {
+            nonce,
+            routing_id,
+            encoded_tunnel_server_domain,
+        }
+    }
+}
+
 impl<'d> CableQrCodeDevice<'d> {
     /// Generates a QR code, linking the provided known-device store. A device scanning
     /// this QR code may be persisted to the store after a successful connection.
@@ -140,7 +162,7 @@ impl CableQrCodeDevice<'_> {
         Self::new(hint, false, None)
     }
 
-    async fn await_advertisement(&self) -> Result<(FidoDevice, Vec<u8>), Error> {
+    async fn await_advertisement(&self) -> Result<(FidoDevice, DecryptedAdvert), Error> {
         bluez::manager::start_discovery(&vec![
             CABLE_UUID_FIDO.to_owned(),
             CABLE_UUID_GOOGLE.to_owned(),
@@ -163,7 +185,12 @@ impl CableQrCodeDevice<'_> {
                     trace!(?decrypted);
                     (device, decrypted)
                 })
-                .find(|(_, decrypted)| decrypted.is_some());
+                .find(|(_, decrypted)| decrypted.is_some())
+                .map(|(device, decrypted)| {
+                    let decrypted = decrypted.unwrap();
+                    let advert = DecryptedAdvert::from(decrypted.as_slice());
+                    (device, advert)
+                });
 
             if let Some((device, decrypted)) = device {
                 debug!(
@@ -171,7 +198,8 @@ impl CableQrCodeDevice<'_> {
                     ?decrypted,
                     "Successfully decrypted advertisement from device"
                 );
-                return Ok((device, decrypted.unwrap()));
+
+                return Ok((device, decrypted));
             }
 
             debug!("No devices found with matching advertisement, waiting for new advertisement");
