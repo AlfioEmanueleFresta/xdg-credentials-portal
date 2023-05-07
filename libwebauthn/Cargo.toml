@@ -13,6 +13,7 @@ default = []
 hid-device-tests = ["virtual-hid-device"]
 virtual-hid-device = ["solo"]
 
+
 [dependencies]
 base64-url = "1.1.14"
 dbus = "0.9.5"
@@ -56,3 +57,4 @@ text_io = "0.1"
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
+qrcode = "0.12"

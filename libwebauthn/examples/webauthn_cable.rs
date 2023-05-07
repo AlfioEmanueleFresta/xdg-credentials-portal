@@ -6,6 +6,8 @@ use libwebauthn::transport::cable::known_devices::{
     CableKnownDeviceInfoStore, EphemeralDeviceInfoStore,
 };
 use libwebauthn::transport::cable::qr_code_device::{CableQrCodeDevice, QrCodeOperationHint};
+use qrcode::render::unicode;
+use qrcode::QrCode;
 use rand::{thread_rng, Rng};
 use tracing_subscriber::{self, EnvFilter};
 
@@ -41,10 +43,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         QrCodeOperationHint::MakeCredential,
         &mut device_info_store,
     );
-    println!(
-        "Created QR code, awaiting for advertisement: {}",
-        device.qr_code.to_string()
-    );
+
+    println!("Created QR code, awaiting for advertisement.");
+    let qr_code = QrCode::new(device.qr_code.to_string()).unwrap();
+    let image = qr_code
+        .render::<unicode::Dense1x2>()
+        .dark_color(unicode::Dense1x2::Light)
+        .light_color(unicode::Dense1x2::Dark)
+        .build();
+    println!("{}", image);
 
     // Connect to a known device
     let mut channel: CableChannel = device.channel().await.unwrap();
