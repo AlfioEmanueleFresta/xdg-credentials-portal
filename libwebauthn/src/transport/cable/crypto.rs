@@ -34,7 +34,7 @@ pub fn trial_decrypt_advert(eid_key: &[u8], candidate_advert: &[u8]) -> Option<V
         return None;
     }
 
-    let expected_tag = hmac_sha256(eid_key, &candidate_advert[..16]);
+    let expected_tag = hmac_sha256(&eid_key[32..], &candidate_advert[..16]);
     if expected_tag[..4] != candidate_advert[16..] {
         warn!({ expected = ?expected_tag[..4], actual = ?candidate_advert[16..] }, 
               "candidate advert HMAC tag does not match");
