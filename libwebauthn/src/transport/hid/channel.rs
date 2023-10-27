@@ -436,7 +436,7 @@ pub struct InitResponse {
 }
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Copy, Clone, Debug)]
     pub struct Caps: u8 {
         const WINK = 0x01;
         const CBOR = 0x04;

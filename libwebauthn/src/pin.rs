@@ -212,7 +212,7 @@ where
         let shared = self.private_key().diffie_hellman(&peer_public_key);
 
         // Return kdf(Z).
-        Ok(self.kdf(shared.as_bytes().as_bytes()))
+        Ok(self.kdf(shared.raw_secret_bytes().as_bytes()))
     }
 
     /// getPublicKey()

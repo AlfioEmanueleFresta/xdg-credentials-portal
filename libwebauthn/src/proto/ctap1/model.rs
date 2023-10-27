@@ -4,8 +4,7 @@ use std::time::Duration;
 
 use byteorder::{BigEndian, ReadBytesExt};
 use sha2::{Digest, Sha256};
-use x509_parser::prelude::X509Certificate;
-use x509_parser::traits::FromDer;
+use x509_parser::prelude::{FromDer, X509Certificate};
 
 use crate::proto::ctap1::apdu::{ApduResponse, ApduResponseStatus};
 use crate::proto::ctap2::Ctap2Transport;
