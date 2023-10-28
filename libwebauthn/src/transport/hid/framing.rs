@@ -177,8 +177,8 @@ impl HidMessageParser {
             error!(?cmd, "Invalid HID message command");
             return Err(IOError::new(
                 IOErrorKind::InvalidData,
-          format!("Invalid HID message command: {:?}", cmd),
-           ));
+                format!("Invalid HID message command: {:?}", cmd),
+            ));
         };
         let expected_size = cursor.read_u16::<BigEndian>()?;
 
