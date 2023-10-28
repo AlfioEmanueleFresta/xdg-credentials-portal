@@ -194,7 +194,10 @@ where
         // Parse peerCoseKey as specified for getPublicKey, below, and produce a P-256 point, Y.
         // If unsuccessful, or if the resulting point is not on the curve, return error.
         let cosey::PublicKey::EcdhEsHkdf256Key(peer_public_key) = peer_public_key else {
-            error!(?peer_public_key, "Unsupported peerCoseKey format. Only EcdhEsHkdf256Key is supported.");
+            error!(
+                ?peer_public_key,
+                "Unsupported peerCoseKey format. Only EcdhEsHkdf256Key is supported."
+            );
             return Err(Error::Ctap(CtapError::Other));
         };
         let encoded_point = EncodedPoint::from_affine_coordinates(
