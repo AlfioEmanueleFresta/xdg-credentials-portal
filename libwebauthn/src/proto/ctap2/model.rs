@@ -3,7 +3,6 @@ use std::convert::TryFrom;
 use std::io::Cursor as IOCursor;
 
 use byteorder::{BigEndian, ReadBytesExt};
-use cosey::PublicKey;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use serde_bytes::ByteBuf;
 use serde_derive::{Deserialize, Serialize};
@@ -12,12 +11,14 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use tracing::debug;
 use tracing::warn;
 
+use ctap_types::cose::PublicKey;
+
 use crate::ops::webauthn::GetAssertionRequest;
 use crate::ops::webauthn::MakeCredentialRequest;
 use crate::proto::ctap1::Ctap1Transport;
 use crate::transport::error::CtapError;
 
-// 32 (rpIdHash) + 1 (flags) + 4 (signCount) + 16 (aaguid)
+// 32 (rpIdHash) + 1 (flags) + 4 (signCount) + 16 (aaguid
 const AUTHENTICATOR_DATA_PUBLIC_KEY_OFFSET: usize = 53;
 
 #[derive(Debug, IntoPrimitive, TryFromPrimitive, Copy, Clone, PartialEq, Serialize_repr)]
@@ -115,6 +116,7 @@ impl From<&Ctap1Transport> for Ctap2Transport {
         }
     }
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ctap2PublicKeyCredentialDescriptor {
     pub r#type: Ctap2PublicKeyCredentialType,
@@ -622,8 +624,8 @@ impl Ctap2GetInfoResponse {
     ///   and either clientPin option ID is present and set to true or uv option ID is present and set to true or both.
     pub fn is_uv_protected(&self) -> bool {
         self.option_enabled("uv") || // Deprecated no-op UV
-        self.option_enabled("clientPin") ||
-        (self.option_enabled("pinUvAuthToken") && self.option_enabled("uv"))
+            self.option_enabled("clientPin") ||
+            (self.option_enabled("pinUvAuthToken") && self.option_enabled("uv"))
     }
 
     pub fn uv_operation(&self) -> Ctap2UserVerificationOperation {

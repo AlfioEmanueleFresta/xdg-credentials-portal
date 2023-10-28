@@ -13,6 +13,7 @@ use rand::{rngs::OsRng, thread_rng, Rng};
 use sha2::{Digest, Sha256};
 use tracing::{error, info, instrument, warn};
 use x509_parser::nom::AsBytes;
+use ctap_types::cose;
 
 use crate::proto::{ctap2::Ctap2PinUvAuthProtocol, CtapError};
 
@@ -108,8 +109,8 @@ pub trait PinUvAuthProtocol: Send + Sync {
     ///   shared secret.
     fn encapsulate(
         &self,
-        peer_public_key: &cosey::PublicKey,
-    ) -> Result<(cosey::PublicKey, Vec<u8>), Error>;
+        peer_public_key: &cose::PublicKey,
+    ) -> Result<(cose::PublicKey, Vec<u8>), Error>;
 
     // encrypt(key, demPlaintext) → ciphertext
     //   Encrypts a plaintext to produce a ciphertext, which may be longer than the plaintext.
@@ -130,14 +131,15 @@ trait ECPrivateKeyPinUvAuthProtocol {
     fn public_key(&self) -> &P256PublicKey;
     fn kdf(&self, bytes: &[u8]) -> Vec<u8>;
 }
+
 /// Common functionality between ECDH-based PIN/UV auth protocols (1 & 2)
 trait ECDHPinUvAuthProtocol {
-    fn ecdh(&self, peer_public_key: &cosey::PublicKey) -> Result<Vec<u8>, Error>;
+    fn ecdh(&self, peer_public_key: &cose::PublicKey) -> Result<Vec<u8>, Error>;
     fn encapsulate(
         &self,
-        peer_public_key: &cosey::PublicKey,
-    ) -> Result<(cosey::PublicKey, Vec<u8>), Error>;
-    fn get_public_key(&self) -> cosey::PublicKey;
+        peer_public_key: &cose::PublicKey,
+    ) -> Result<(cose::PublicKey, Vec<u8>), Error>;
+    fn get_public_key(&self) -> cose::PublicKey;
 }
 
 pub struct PinUvAuthProtocolOne {
@@ -174,14 +176,14 @@ impl ECPrivateKeyPinUvAuthProtocol for PinUvAuthProtocolOne {
 }
 
 impl<P> ECDHPinUvAuthProtocol for P
-where
-    P: ECPrivateKeyPinUvAuthProtocol,
+    where
+        P: ECPrivateKeyPinUvAuthProtocol,
 {
     #[instrument(skip_all)]
     fn encapsulate(
         &self,
-        peer_public_key: &cosey::PublicKey,
-    ) -> Result<(cosey::PublicKey, Vec<u8>), Error> {
+        peer_public_key: &cose::PublicKey,
+    ) -> Result<(cose::PublicKey, Vec<u8>), Error> {
         // Let sharedSecret be the result of calling ecdh(peerCoseKey). Return any resulting error.
         let shared_secret = self.ecdh(peer_public_key)?;
 
@@ -190,10 +192,10 @@ where
     }
 
     /// ecdh(peerCoseKey) → sharedSecret | error
-    fn ecdh(&self, peer_public_key: &cosey::PublicKey) -> Result<Vec<u8>, Error> {
+    fn ecdh(&self, peer_public_key: &cose::PublicKey) -> Result<Vec<u8>, Error> {
         // Parse peerCoseKey as specified for getPublicKey, below, and produce a P-256 point, Y.
         // If unsuccessful, or if the resulting point is not on the curve, return error.
-        let cosey::PublicKey::EcdhEsHkdf256Key(peer_public_key) = peer_public_key else {
+        let cose::PublicKey::EcdhEsHkdf256Key(peer_public_key) = peer_public_key else {
             error!(
                 ?peer_public_key,
                 "Unsupported peerCoseKey format. Only EcdhEsHkdf256Key is supported."
@@ -219,7 +221,7 @@ where
     }
 
     /// getPublicKey()
-    fn get_public_key(&self) -> cosey::PublicKey {
+    fn get_public_key(&self) -> cose::PublicKey {
         let point = EncodedPoint::from(self.public_key());
         let x: heapless::Vec<u8, 32> =
             heapless::Vec::from_slice(point.x().expect("Not the identity point").as_bytes())
@@ -227,7 +229,7 @@ where
         let y: heapless::Vec<u8, 32> =
             heapless::Vec::from_slice(point.y().expect("Not identity nor compressed").as_bytes())
                 .unwrap();
-        cosey::PublicKey::P256Key(cosey::P256PublicKey {
+        cose::PublicKey::P256Key(cose::P256PublicKey {
             x: x.into(),
             y: y.into(),
         })
@@ -284,8 +286,8 @@ impl PinUvAuthProtocol for PinUvAuthProtocolOne {
 
     fn encapsulate(
         &self,
-        peer_public_key: &cosey::PublicKey,
-    ) -> Result<(cosey::PublicKey, Vec<u8>), Error> {
+        peer_public_key: &cose::PublicKey,
+    ) -> Result<(cose::PublicKey, Vec<u8>), Error> {
         <Self as ECDHPinUvAuthProtocol>::encapsulate(self, peer_public_key)
     }
 }
@@ -335,8 +337,8 @@ impl PinUvAuthProtocol for PinUvAuthProtocolTwo {
     #[instrument(skip_all)]
     fn encapsulate(
         &self,
-        peer_public_key: &cosey::PublicKey,
-    ) -> Result<(cosey::PublicKey, Vec<u8>), Error> {
+        peer_public_key: &cose::PublicKey,
+    ) -> Result<(cose::PublicKey, Vec<u8>), Error> {
         <Self as ECDHPinUvAuthProtocol>::encapsulate(self, peer_public_key)
     }
 

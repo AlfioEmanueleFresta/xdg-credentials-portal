@@ -224,6 +224,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cbor-smol"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d516e3e353d5fc5ee156028f43224033430fd08ef05f8d5dba18a57a4ee5df49"
+dependencies = [
+ "delog",
+ "heapless",
+ "heapless-bytes",
+ "serde",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.72"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -271,13 +283,13 @@ dependencies = [
 
 [[package]]
 name = "cosey"
-version = "0.4.0"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb743c2c58b69b970e02f5ba7f552f75fcfc8393768e3ae4316e055aabacfdaa"
 dependencies = [
  "heapless-bytes",
  "serde",
- "serde_derive",
  "serde_repr",
- "serde_test",
 ]
 
 [[package]]
@@ -335,6 +347,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctap-types"
+version = "0.1.3"
+dependencies = [
+ "bitflags 1.3.2",
+ "cbor-smol",
+ "cosey",
+ "delog",
+ "heapless",
+ "heapless-bytes",
+ "interchange",
+ "iso7816",
+ "serde",
+ "serde-indexed",
+ "serde_derive",
+ "serde_repr",
+ "serde_test",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -359,6 +390,15 @@ dependencies = [
  "libc",
  "libdbus-sys",
  "winapi",
+]
+
+[[package]]
+name = "delog"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af2b93368262340c9d4441251b824500d1b641a50957ecf4219a2cc41b9eac8f"
+dependencies = [
+ "log",
 ]
 
 [[package]]
@@ -670,6 +710,7 @@ checksum = "9c1ad878e07405df82b695089e63d278244344f80e764074d0bdfe99b89460f3"
 dependencies = [
  "atomic-polyfill",
  "hash32",
+ "serde",
  "spin",
  "stable_deref_trait",
 ]
@@ -708,13 +749,14 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hidapi"
-version = "1.3.0"
+version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d6f5e247bc66f3255d755e96d9d43f6b191f4e182072b811d55584ff58c510f"
+checksum = "723777263b0dcc5730aec947496bd8c3940ba63c15f5633b288cc615f4f6af79"
 dependencies = [
  "cc",
  "libc",
  "pkg-config",
+ "winapi",
 ]
 
 [[package]]
@@ -761,6 +803,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
 dependencies = [
  "cfg-if 1.0.0",
+]
+
+[[package]]
+name = "interchange"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "310d743c23f798f10d5ba2f77fdd3eff06aaf2d8f8b9d78beba7fb1167f4ccbf"
+
+[[package]]
+name = "iso7816"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7e6ac743d509349b7865595ce90bbfcfbe59f42b8ec0db9e76ec361ace3f652"
+dependencies = [
+ "delog",
+ "heapless",
 ]
 
 [[package]]
@@ -1875,7 +1933,7 @@ dependencies = [
  "blurz",
  "byteorder",
  "cbc",
- "cosey",
+ "ctap-types",
  "dbus 0.9.5",
  "futures 0.3.18",
  "heapless",
