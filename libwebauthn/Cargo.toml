@@ -54,6 +54,10 @@ hkdf = "0.12"
 ctap-types = { path = "../ctap-types", features = ["alloc"] }
 solo = { path = "../solo", optional = true }
 text_io = "0.1"
+tokio-tungstenite = { version = "0.20.1", features = [
+    "rustls-tls-native-roots",
+] }
+snow = { path = "../snow" }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }

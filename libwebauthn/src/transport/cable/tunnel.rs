@@ -1,49 +1,28 @@
+use futures::{Sink, SinkExt, StreamExt};
+use p256::ecdh::EphemeralSecret;
+use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::FieldBytes;
+use p256::{NonZeroScalar, SecretKey};
 use sha2::{Digest, Sha256};
+use snow::params::NoiseParams;
+use snow::Builder;
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio_tungstenite::tungstenite::http::StatusCode;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{connect_async, WebSocketStream};
+use tracing::{debug, error};
+
+use super::channel::CableChannel;
+use crate::transport::error::Error;
+use crate::webauthn::TransportError;
 
 pub(crate) const KNOWN_TUNNEL_DOMAINS: &[&str] = &["cable.ua5v.com", "cable.auth.com"];
 const SHA_INPUT: &[u8] = b"caBLEv2 tunnel server domain";
 const BASE32_CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
 const TLDS: &[&str] = &[".com", ".org", ".net", ".info"];
+const P256_X962_LENGTH: usize = 65;
 
-/**
- * Specs:
- *
- * func decodeTunnelServerDomain(encoded uint16) (string, bool) {
-    if encoded < 256 {
-        if int(encoded) >= len(assignedTunnelServerDomains) {
-            return "", false
-        }
-        return assignedTunnelServerDomains[encoded], true
-    }
-
-    shaInput := []byte{
-        0x63, 0x61, 0x42, 0x4c, 0x45, 0x76, 0x32, 0x20,
-        0x74, 0x75, 0x6e, 0x6e, 0x65, 0x6c, 0x20, 0x73,
-        0x65, 0x72, 0x76, 0x65, 0x72, 0x20, 0x64, 0x6f,
-        0x6d, 0x61, 0x69, 0x6e,
-    }
-    shaInput = append(shaInput, byte(encoded), byte(encoded>>8), 0)
-    digest := sha256.Sum256(shaInput)
-
-    v := binary.LittleEndian.Uint64(digest[:8])
-    tldIndex := uint(v & 3)
-    v >>= 2
-
-    ret := "cable."
-    const base32Chars = "abcdefghijklmnopqrstuvwxyz234567"
-    for v != 0 {
-        ret += string(base32Chars[v&31])
-        v >>= 5
-    }
-
-    tlds := []string{".com", ".org", ".net", ".info"}
-    ret += tlds[tldIndex&3]
-
-    return ret, true
-}
-*/
-
-fn decode_tunnel_server_domain(encoded: u16) -> Option<String> {
+pub fn decode_tunnel_server_domain(encoded: u16) -> Option<String> {
     if encoded < 256 {
         if encoded as usize >= KNOWN_TUNNEL_DOMAINS.len() {
             return None;
@@ -71,6 +50,131 @@ fn decode_tunnel_server_domain(encoded: u16) -> Option<String> {
 
     ret.push_str(TLDS[tld_index as usize]);
     Some(ret)
+}
+
+pub async fn connect<'d>(
+    tunnel_domain: &str,
+    routing_id: &str,
+    tunnel_id: &str,
+    psk: &[u8],
+    private_key: &NonZeroScalar,
+) -> Result<CableChannel<'d>, Error> {
+    let connect_url = format!(
+        "wss://{}/cable/connect/{}/{}",
+        tunnel_domain, routing_id, tunnel_id
+    );
+    debug!(?connect_url, "Connecting to tunnel server");
+    // TODO: set protocol: fido.cable
+
+    let (mut ws_stream, response) = match connect_async(&connect_url).await {
+        Ok((ws_stream, response)) => (ws_stream, response),
+        Err(e) => {
+            error!(?e, "Failed to connect to tunnel server");
+            return Err(Error::Transport(TransportError::ConnectionFailed));
+        }
+    };
+    debug!(?response, "Connected to tunnel server");
+
+    if response.status() != StatusCode::SWITCHING_PROTOCOLS {
+        error!(?response, "Failed to switch to websocket protocol");
+        return Err(Error::Transport(TransportError::ConnectionFailed));
+    }
+    debug!("Tunnel server returned success");
+
+    do_handshake(&mut ws_stream, psk, private_key).await?;
+    // After this, the handshake should be complete and you can start sending/receiving encrypted messages.
+    // ...
+
+    todo!()
+}
+
+async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
+    ws_stream: &mut WebSocketStream<T>,
+    psk: &[u8],
+    private_key: &NonZeroScalar,
+) -> Result<(), Error> {
+    let local_private_key = private_key.to_bytes();
+    let noise_params: NoiseParams = "Noise_KNpsk0_P256_AESGCM_SHA256".parse().unwrap();
+    let noise_builder = Builder::new(noise_params)
+        .local_private_key(&local_private_key.as_slice())
+        .psk(0, psk);
+
+    // Build the Noise handshake as the initiator
+    let mut noise_handshake = match noise_builder.build_initiator() {
+        Ok(handshake) => handshake,
+        Err(e) => {
+            error!(?e, "Failed to build Noise handshake");
+            return Err(Error::Transport(TransportError::ConnectionFailed));
+        }
+    };
+
+    let mut initial_msg_buffer = vec![0u8; 1024];
+    let initial_msg_len = match noise_handshake.write_message(&[], &mut initial_msg_buffer) {
+        Ok(msg_len) => msg_len,
+        Err(e) => {
+            error!(?e, "Failed to write initial handshake message");
+            return Err(Error::Transport(TransportError::ConnectionFailed));
+        }
+    };
+    debug!(
+        { handshake = ?initial_msg_buffer[..initial_msg_len] },
+        "Sending initial handshake message"
+    );
+
+    if let Err(e) = ws_stream
+        .send(Message::Binary(
+            initial_msg_buffer[..initial_msg_len].into(),
+        ))
+        .await
+    {
+        error!(?e, "Failed to send initial handshake message");
+        return Err(Error::Transport(TransportError::ConnectionFailed));
+    }
+    debug!("Sent initial handshake message");
+
+    // Read the response from the server and process it
+    let response = match ws_stream.next().await {
+        Some(Ok(Message::Binary(response))) => response,
+        Some(Ok(msg)) => {
+            error!(?msg, "Unexpected message type received");
+            return Err(Error::Transport(TransportError::ConnectionFailed));
+        }
+        Some(Err(e)) => {
+            error!(?e, "Failed to read handshake response");
+            return Err(Error::Transport(TransportError::ConnectionFailed));
+        }
+        None => {
+            error!("Connection was closed before handshake was complete");
+            return Err(Error::Transport(TransportError::ConnectionFailed));
+        }
+    };
+
+    /* output:
+       keys trafficKeys,
+       handshakeHash [32]byte) {
+    */
+    if response.len() < P256_X962_LENGTH {
+        error!(
+            { len = response.len() },
+            "Peer handshake message is too short"
+        );
+        return Err(Error::Transport(TransportError::ConnectionFailed));
+    }
+
+    let peer_point_bytes = &response[..P256_X962_LENGTH];
+    let ciphertext = &response[P256_X962_LENGTH..];
+
+    let mut payload = [0u8; 1024];
+    let payload_len = noise_handshake
+        .read_message(&response, &mut payload)
+        .unwrap();
+
+    debug!(
+        { handshake = ?payload[..payload_len] },
+        "Received handshake response"
+    );
+
+    Ok(())
 }
 
 #[cfg(test)]

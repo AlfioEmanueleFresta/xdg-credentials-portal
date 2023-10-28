@@ -4,16 +4,17 @@ use std::time::Duration;
 use async_trait::async_trait;
 use p256::ecdh::EphemeralSecret;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::{NonZeroScalar, SecretKey};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::Serialize;
 use serde_bytes::ByteBuf;
 use serde_indexed::SerializeIndexed;
 use tokio::time::sleep;
-use tracing::{debug, instrument, trace};
+use tracing::{debug, error, instrument, trace};
 
 use super::known_devices::CableKnownDeviceInfoStore;
-use super::tunnel::KNOWN_TUNNEL_DOMAINS;
+use super::tunnel::{self, KNOWN_TUNNEL_DOMAINS};
 use super::{channel::CableChannel, Cable};
 use crate::transport::ble::bluez::{self, FidoDevice};
 use crate::transport::cable::crypto::{derive, trial_decrypt_advert, KeyPurpose};
@@ -28,7 +29,6 @@ const CABLE_UUID_GOOGLE: &str = "0000fde2-0000-1000-8000-00805f9b34fb";
 const ADVERTISEMENT_WAIT_LOOP_MS: u64 = 2000;
 
 #[derive(Debug, Clone, Copy)]
-
 pub enum QrCodeOperationHint {
     GetAssertionRequest,
     MakeCredential,
@@ -84,7 +84,7 @@ pub struct CableQrCodeDevice<'d> {
     /// The QR code to be scanned by the new authenticator.
     pub qr_code: CableQrCode,
     /// An ephemeral private, corresponding to the public key within the QR code.
-    private_key: EphemeralSecret,
+    pub private_key: NonZeroScalar,
     /// An optional reference to the store. This may be None, if no persistence is desired.
     store: Option<&'d mut Box<dyn CableKnownDeviceInfoStore>>,
 }
@@ -100,6 +100,7 @@ impl Debug for CableQrCodeDevice<'_> {
 
 #[derive(Debug)]
 struct DecryptedAdvert {
+    plaintext: [u8; 16],
     nonce: [u8; 10],
     routing_id: [u8; 3],
     encoded_tunnel_server_domain: u16,
@@ -112,7 +113,10 @@ impl From<&[u8]> for DecryptedAdvert {
         let mut routing_id = [0u8; 3];
         routing_id.copy_from_slice(&plaintext[11..14]);
         let encoded_tunnel_server_domain = u16::from_le_bytes([plaintext[14], plaintext[15]]);
+        let mut plaintext_fixed = [0u8; 16];
+        plaintext_fixed.copy_from_slice(&plaintext[..16]);
         Self {
+            plaintext: plaintext_fixed,
             nonce,
             routing_id,
             encoded_tunnel_server_domain,
@@ -135,7 +139,8 @@ impl<'d> CableQrCodeDevice<'d> {
         state_assisted: bool,
         store: Option<&'d mut Box<dyn CableKnownDeviceInfoStore>>,
     ) -> Self {
-        let private_key = EphemeralSecret::random(&mut OsRng);
+        let private_key_scalar = NonZeroScalar::random(&mut OsRng);
+        let private_key = SecretKey::from_bytes(&private_key_scalar.to_bytes()).unwrap();
         let public_key = private_key.public_key().as_affine().to_encoded_point(true);
         let mut qr_secret = [0u8; 16];
         OsRng::default().fill_bytes(&mut qr_secret);
@@ -149,7 +154,7 @@ impl<'d> CableQrCodeDevice<'d> {
                 operation_hint: hint,
                 state_assisted: Some(state_assisted),
             },
-            private_key,
+            private_key: private_key_scalar,
             store,
         }
     }
@@ -171,7 +176,7 @@ impl CableQrCodeDevice<'_> {
         .or(Err(Error::Transport(TransportError::TransportUnavailable)))?;
 
         loop {
-            let devices_service_data = bluez::manager::devices_by_service(CABLE_UUID_GOOGLE)
+            let devices_service_data = bluez::manager::devices_by_service(CABLE_UUID_FIDO)
                 .await
                 .or(Err(Error::Transport(TransportError::TransportUnavailable)))?;
             debug!({ ?devices_service_data }, "Found devices with service data");
@@ -209,6 +214,7 @@ impl CableQrCodeDevice<'_> {
 }
 
 unsafe impl Send for CableQrCodeDevice<'_> {}
+
 unsafe impl Sync for CableQrCodeDevice<'_> {}
 
 impl Display for CableQrCodeDevice<'_> {
@@ -222,7 +228,34 @@ impl<'d> Device<'d, Cable, CableChannel<'d>> for CableQrCodeDevice<'_> {
     async fn channel(&'d mut self) -> Result<CableChannel<'d>, Error> {
         let (device, advert) = self.await_advertisement().await?;
 
-        todo!()
+        let Some(tunnel_domain) =
+            tunnel::decode_tunnel_server_domain(advert.encoded_tunnel_server_domain)
+        else {
+            error!({ encoded = %advert.encoded_tunnel_server_domain }, "Failed to decode tunnel server domain");
+            return Err(Error::Transport(TransportError::InvalidEndpoint));
+        };
+
+        debug!(?tunnel_domain, "Creating channel to tunnel server");
+        let routing_id_str = hex::encode(&advert.routing_id);
+        let _nonce_str = hex::encode(&advert.nonce);
+
+        let tunnel_id = &derive(&self.qr_code.qr_secret, None, KeyPurpose::TunnelID)[..16];
+        let tunnel_id_str = hex::encode(&tunnel_id);
+
+        let psk = &derive(
+            &self.qr_code.qr_secret,
+            Some(&advert.plaintext),
+            KeyPurpose::PSK,
+        )[..32];
+
+        return tunnel::connect(
+            &tunnel_domain,
+            &routing_id_str,
+            &tunnel_id_str,
+            psk,
+            &self.private_key,
+        )
+        .await;
     }
 
     #[instrument(skip_all)]
