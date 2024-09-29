@@ -5,14 +5,15 @@ use p256::elliptic_curve::FieldBytes;
 use p256::{NonZeroScalar, SecretKey};
 use sha2::{Digest, Sha256};
 use snow::params::NoiseParams;
-use snow::Builder;
+use snow::{Builder, TransportState};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, WebSocketStream};
 use tracing::{debug, error, trace};
 
-use super::channel::CableChannel;
+use super::channel::{CableChannel, CableChannelDevice};
+use super::qr_code_device::CableQrCodeDevice;
 use crate::transport::error::Error;
 use crate::webauthn::TransportError;
 
@@ -61,6 +62,7 @@ pub fn decode_tunnel_server_domain(encoded: u16) -> Option<String> {
 }
 
 pub async fn connect<'d>(
+    device: &'d CableQrCodeDevice<'d>,
     tunnel_domain: &str,
     routing_id: &str,
     tunnel_id: &str,
@@ -89,7 +91,7 @@ pub async fn connect<'d>(
     }
     debug!("Tunnel server returned success");
 
-    do_handshake(
+    let noise_state = do_handshake(
         &mut ws_stream,
         psk,
         private_key,
@@ -99,7 +101,11 @@ pub async fn connect<'d>(
     // After this, the handshake should be complete and you can start sending/receiving encrypted messages.
     // ...
 
-    todo!()
+    Ok(CableChannel {
+        ws_stream,
+        noise_state,
+        device: CableChannelDevice::QrCode(device),
+    })
 }
 
 async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
@@ -107,7 +113,7 @@ async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
     psk: &[u8; 32],
     private_key: &NonZeroScalar,
     transaction_type: TransactionType,
-) -> Result<(), Error> {
+) -> Result<TransportState, Error> {
     let local_private_key = private_key.to_bytes();
 
     let noise_builder = match transaction_type {
@@ -188,9 +194,6 @@ async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
         return Err(Error::Transport(TransportError::ConnectionFailed));
     }
 
-    // let peer_point_bytes = &response[..P256_X962_LENGTH];
-    // let ciphertext = &response[P256_X962_LENGTH..];
-
     let mut payload = [0u8; 1024];
     let payload_len = noise_handshake
         .read_message(&response, &mut payload)
@@ -201,7 +204,12 @@ async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
         "Received handshake response"
     );
 
-    Ok(())
+    if !noise_handshake.is_handshake_finished() {
+        error!("Handshake did not complete");
+        return Err(Error::Transport(TransportError::ConnectionFailed));
+    }
+
+    Ok(noise_handshake.into_transport_mode()?)
 }
 
 #[cfg(test)]

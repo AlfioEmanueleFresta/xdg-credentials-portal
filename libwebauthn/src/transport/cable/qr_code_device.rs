@@ -251,6 +251,7 @@ impl<'d> Device<'d, Cable, CableChannel<'d>> for CableQrCodeDevice<'_> {
             .unwrap();
 
         return tunnel::connect(
+            self,
             &tunnel_domain,
             &routing_id_str,
             &tunnel_id_str,
@@ -262,7 +263,7 @@ impl<'d> Device<'d, Cable, CableChannel<'d>> for CableQrCodeDevice<'_> {
 
     #[instrument(skip_all)]
     async fn supported_protocols(&mut self) -> Result<SupportedProtocols, Error> {
-        todo!()
+        Ok(SupportedProtocols::fido2_only())
     }
 }
 

@@ -372,7 +372,7 @@ impl Channel for HidChannel<'_> {
         self.status
     }
 
-    async fn close(&self) {
+    async fn close(&mut self) {
         ()
     }
 
@@ -399,7 +399,7 @@ impl Channel for HidChannel<'_> {
         Ok(apdu_response)
     }
 
-    async fn cbor_send(&self, request: &CborRequest, _timeout: Duration) -> Result<(), Error> {
+    async fn cbor_send(&mut self, request: &CborRequest, _timeout: Duration) -> Result<(), Error> {
         let cid = self.init.cid;
         debug!({ cid }, "Sending CBOR request");
         trace!(?request);
@@ -412,7 +412,7 @@ impl Channel for HidChannel<'_> {
         Ok(())
     }
 
-    async fn cbor_recv(&self, timeout: Duration) -> Result<CborResponse, Error> {
+    async fn cbor_recv(&mut self, timeout: Duration) -> Result<CborResponse, Error> {
         let hid_response = self.hid_recv(timeout).await?;
         let cbor_response = CborResponse::try_from(&hid_response.payload)
             .or(Err(Error::Transport(TransportError::InvalidFraming)))?;

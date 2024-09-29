@@ -76,7 +76,7 @@ impl<'a> Channel for BleChannel<'a> {
         self.status
     }
 
-    async fn close(&self) {
+    async fn close(&mut self) {
         let _x = self.device;
         todo!()
     }
@@ -117,7 +117,7 @@ impl<'a> Channel for BleChannel<'a> {
 
     #[instrument(level = Level::DEBUG, skip_all)]
     async fn cbor_send(
-        &self,
+        &mut self,
         request: &CborRequest,
         timeout: std::time::Duration,
     ) -> Result<(), Error> {
@@ -133,7 +133,7 @@ impl<'a> Channel for BleChannel<'a> {
     }
 
     #[instrument(level = Level::DEBUG, skip_all)]
-    async fn cbor_recv(&self, timeout: std::time::Duration) -> Result<CborResponse, Error> {
+    async fn cbor_recv(&mut self, timeout: std::time::Duration) -> Result<CborResponse, Error> {
         let response_frame = bluez::frame_recv(&self.connection, timeout)
             .await
             .or(Err(Error::Transport(TransportError::ConnectionFailed)))?;
