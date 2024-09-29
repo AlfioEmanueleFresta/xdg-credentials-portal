@@ -44,3 +44,9 @@ impl From<TransportError> for Error {
         Error::Transport(error)
     }
 }
+
+impl From<snow::Error> for Error {
+    fn from(error: snow::Error) -> Self {
+        Error::Transport(TransportError::NegotiationFailed)
+    }
+}

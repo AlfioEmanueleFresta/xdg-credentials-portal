@@ -242,11 +242,13 @@ impl<'d> Device<'d, Cable, CableChannel<'d>> for CableQrCodeDevice<'_> {
         let tunnel_id = &derive(&self.qr_code.qr_secret, None, KeyPurpose::TunnelID)[..16];
         let tunnel_id_str = hex::encode(&tunnel_id);
 
-        let psk = &derive(
+        let psk: &[u8; 32] = &derive(
             &self.qr_code.qr_secret,
             Some(&advert.plaintext),
             KeyPurpose::PSK,
-        )[..32];
+        )[..32]
+            .try_into()
+            .unwrap();
 
         return tunnel::connect(
             &tunnel_domain,

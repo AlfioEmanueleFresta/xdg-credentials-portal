@@ -56,7 +56,7 @@ pub async fn connect<'d>(
     tunnel_domain: &str,
     routing_id: &str,
     tunnel_id: &str,
-    psk: &[u8],
+    psk: &[u8; 32],
     private_key: &NonZeroScalar,
 ) -> Result<CableChannel<'d>, Error> {
     let connect_url = format!(
@@ -90,14 +90,14 @@ pub async fn connect<'d>(
 
 async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
     ws_stream: &mut WebSocketStream<T>,
-    psk: &[u8],
+    psk: &[u8; 32],
     private_key: &NonZeroScalar,
 ) -> Result<(), Error> {
     let local_private_key = private_key.to_bytes();
     let noise_params: NoiseParams = "Noise_KNpsk0_P256_AESGCM_SHA256".parse().unwrap();
     let noise_builder = Builder::new(noise_params)
-        .local_private_key(&local_private_key.as_slice())
-        .psk(0, psk);
+        .local_private_key(&local_private_key.as_slice())?
+        .psk(0, psk)?;
 
     // Build the Noise handshake as the initiator
     let mut noise_handshake = match noise_builder.build_initiator() {
