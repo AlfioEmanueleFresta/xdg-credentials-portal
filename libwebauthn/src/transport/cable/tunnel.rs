@@ -10,7 +10,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, WebSocketStream};
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 
 use super::channel::CableChannel;
 use crate::transport::error::Error;
@@ -21,6 +21,14 @@ const SHA_INPUT: &[u8] = b"caBLEv2 tunnel server domain";
 const BASE32_CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
 const TLDS: &[&str] = &[".com", ".org", ".net", ".info"];
 const P256_X962_LENGTH: usize = 65;
+
+// const CABLE_PROLOGUE_STATE_ASSISTED = [0 as u8];
+const CABLE_PROLOGUE_QR_INITIATED: &[u8] = &[1 as u8];
+
+enum TransactionType {
+    StateAssisted,
+    QRInitiated,
+}
 
 pub fn decode_tunnel_server_domain(encoded: u16) -> Option<String> {
     if encoded < 256 {
@@ -81,7 +89,13 @@ pub async fn connect<'d>(
     }
     debug!("Tunnel server returned success");
 
-    do_handshake(&mut ws_stream, psk, private_key).await?;
+    do_handshake(
+        &mut ws_stream,
+        psk,
+        private_key,
+        TransactionType::QRInitiated,
+    )
+    .await?;
     // After this, the handshake should be complete and you can start sending/receiving encrypted messages.
     // ...
 
@@ -92,12 +106,20 @@ async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
     ws_stream: &mut WebSocketStream<T>,
     psk: &[u8; 32],
     private_key: &NonZeroScalar,
+    transaction_type: TransactionType,
 ) -> Result<(), Error> {
     let local_private_key = private_key.to_bytes();
-    let noise_params: NoiseParams = "Noise_KNpsk0_P256_AESGCM_SHA256".parse().unwrap();
-    let noise_builder = Builder::new(noise_params)
-        .local_private_key(&local_private_key.as_slice())?
-        .psk(0, psk)?;
+
+    let noise_builder = match transaction_type {
+        TransactionType::QRInitiated => Builder::new("Noise_KNpsk0_P256_AESGCM_SHA256".parse()?)
+            .prologue(CABLE_PROLOGUE_QR_INITIATED)?
+            .local_private_key(&local_private_key.as_slice())?
+            .psk(0, psk)?,
+        TransactionType::StateAssisted => {
+            // Builder::new("Noise_NKpsk0_P256_AESGCM_SHA256".parse().unwrap())
+            todo!()
+        }
+    };
 
     // Build the Noise handshake as the initiator
     let mut noise_handshake = match noise_builder.build_initiator() {
@@ -116,7 +138,7 @@ async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
             return Err(Error::Transport(TransportError::ConnectionFailed));
         }
     };
-    debug!(
+    trace!(
         { handshake = ?initial_msg_buffer[..initial_msg_len] },
         "Sending initial handshake message"
     );
@@ -134,7 +156,12 @@ async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
 
     // Read the response from the server and process it
     let response = match ws_stream.next().await {
-        Some(Ok(Message::Binary(response))) => response,
+        Some(Ok(Message::Binary(response))) => {
+            debug!(response_len = response.len(), "Received handshake response");
+            trace!(?response);
+            response
+        }
+
         Some(Ok(msg)) => {
             error!(?msg, "Unexpected message type received");
             return Err(Error::Transport(TransportError::ConnectionFailed));
@@ -161,8 +188,8 @@ async fn do_handshake<T: AsyncRead + AsyncWrite + Unpin>(
         return Err(Error::Transport(TransportError::ConnectionFailed));
     }
 
-    let peer_point_bytes = &response[..P256_X962_LENGTH];
-    let ciphertext = &response[P256_X962_LENGTH..];
+    // let peer_point_bytes = &response[..P256_X962_LENGTH];
+    // let ciphertext = &response[P256_X962_LENGTH..];
 
     let mut payload = [0u8; 1024];
     let payload_len = noise_handshake

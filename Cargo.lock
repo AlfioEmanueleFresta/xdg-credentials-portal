@@ -2304,6 +2304,7 @@ dependencies = [
  "sha2",
  "sodiumoxide",
  "subtle",
+ "tracing",
  "x25519-dalek",
 ]
 
