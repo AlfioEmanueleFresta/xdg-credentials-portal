@@ -26,6 +26,7 @@ use crate::webauthn::TransportError;
 
 const CABLE_UUID_FIDO: &str = "0000fff9-0000-1000-8000-00805f9b34fb";
 const CABLE_UUID_GOOGLE: &str = "0000fde2-0000-1000-8000-00805f9b34fb";
+
 const ADVERTISEMENT_WAIT_LOOP_MS: u64 = 2000;
 
 #[derive(Debug, Clone, Copy)]

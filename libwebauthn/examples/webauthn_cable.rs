@@ -39,10 +39,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         Box::new(EphemeralDeviceInfoStore::default());
 
     // Create QR code
-    let mut device = CableQrCodeDevice::new_persistent(
-        QrCodeOperationHint::MakeCredential,
-        &mut device_info_store,
-    );
+    let mut device: CableQrCodeDevice<'_> =
+        CableQrCodeDevice::new_transient(QrCodeOperationHint::MakeCredential);
 
     println!("Created QR code, awaiting for advertisement.");
     let qr_code = QrCode::new(device.qr_code.to_string()).unwrap();
@@ -104,6 +102,23 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         extensions_cbor: None,
         timeout: TIMEOUT,
     };
+
+    // Create QR code
+    let mut device: CableQrCodeDevice<'_> =
+        CableQrCodeDevice::new_transient(QrCodeOperationHint::GetAssertionRequest);
+
+    println!("Created QR code, awaiting for advertisement.");
+    let qr_code = QrCode::new(device.qr_code.to_string()).unwrap();
+    let image = qr_code
+        .render::<unicode::Dense1x2>()
+        .dark_color(unicode::Dense1x2::Light)
+        .light_color(unicode::Dense1x2::Dark)
+        .build();
+    println!("{}", image);
+
+    // Connect to a known device
+    let mut channel: CableChannel = device.channel().await.unwrap();
+    println!("Tunnel established {:?}", channel);
 
     let response = loop {
         match channel

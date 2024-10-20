@@ -1,10 +1,14 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::io::Cursor as IOCursor;
 
 use byteorder::{BigEndian, ReadBytesExt};
+use ctap_types::ctap2::make_credential::AttestationStatement;
+use futures::future::Map;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use serde_bytes::ByteBuf;
+use serde_cbor::Value;
 use serde_derive::{Deserialize, Serialize};
 use serde_indexed::{DeserializeIndexed, SerializeIndexed};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -280,11 +284,19 @@ pub struct TpmAttestationStmt {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct AppleAnonymousAttestationStmt {
+    #[serde(rename = "x5c")]
+    pub certificates: Vec<ByteBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Ctap2AttestationStatement {
     PackedOrAndroid(PackedAttestationStmt),
     Tpm(TpmAttestationStmt),
     FidoU2F(FidoU2fAttestationStmt),
+    AppleAnonymous(AppleAnonymousAttestationStmt),
+    None(BTreeMap<Value, Value>),
 }
 
 // https://www.w3.org/TR/webauthn/#authenticatormakecredential
@@ -368,6 +380,15 @@ pub struct Ctap2MakeCredentialResponse {
     pub format: String,
     pub authenticator_data: ByteBuf,
     pub attestation_statement: Ctap2AttestationStatement,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_attestation: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub large_blob_key: Option<ByteBuf>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unsigned_extension_output: Option<BTreeMap<Value, Value>>,
 }
 
 // https://www.w3.org/TR/webauthn/#op-get-assertion
@@ -435,6 +456,18 @@ pub struct Ctap2GetAssertionResponse {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_selected: Option<bool>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub large_blob_key: Option<ByteBuf>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unsigned_extension_outputs: Option<BTreeMap<Value, Value>>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_attestation: Option<bool>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation_statement: Option<Ctap2AttestationStatement>,
 }
 
 pub trait Ctap2UserVerifiableRequest {

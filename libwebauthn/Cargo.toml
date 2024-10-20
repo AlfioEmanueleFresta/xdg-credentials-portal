@@ -60,6 +60,7 @@ tungstenite = { version = "0.20.1" }
 tokio-tungstenite = { version = "0.20.1", features = [
     "rustls-tls-native-roots",
 ] }
+tokio-stream = "0.1.4"
 snow = { path = "../snow", features = ["p256"] }
 
 [dev-dependencies]

@@ -9,7 +9,7 @@ use crate::proto::ctap2::model::Ctap2CommandCode;
 use crate::proto::ctap2::model::Ctap2GetAssertionRequest;
 use crate::proto::ctap2::model::Ctap2MakeCredentialRequest;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CborRequest {
     pub command: Ctap2CommandCode,
     pub encoded_data: Vec<u8>,
