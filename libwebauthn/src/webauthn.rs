@@ -19,8 +19,8 @@ use crate::proto::ctap2::{
     Ctap2, Ctap2ClientPinRequest, Ctap2GetAssertionRequest, Ctap2GetInfoResponse,
     Ctap2MakeCredentialRequest, Ctap2UserVerifiableRequest, Ctap2UserVerificationOperation,
 };
-use crate::transport::Channel;
 pub use crate::transport::error::{CtapError, Error, TransportError};
+use crate::transport::Channel;
 
 #[async_trait]
 pub trait WebAuthn {
@@ -53,6 +53,12 @@ pub trait WebAuthn {
         &mut self,
         op: &GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error>;
+    async fn webauthn_change_pin(
+        &mut self,
+        pin_provider: &Box<dyn PinProvider>,
+        new_pin: String,
+        timeout: Duration,
+    ) -> Result<(), Error>;
 
     async fn _negotiate_protocol(&mut self, allow_u2f: bool) -> Result<FidoProtocol, Error>;
 }
@@ -74,8 +80,8 @@ async fn select_uv_proto(
 
 #[async_trait]
 impl<C> WebAuthn for C
-    where
-        C: Channel,
+where
+    C: Channel,
 {
     #[instrument(skip_all, fields(dev = % self))]
     async fn webauthn_make_credential(
@@ -104,7 +110,7 @@ impl<C> WebAuthn for C
             pin_provider,
             op.timeout,
         )
-            .await?;
+        .await?;
         self.ctap2_make_credential(&ctap2_request, op.timeout).await
     }
 
@@ -145,7 +151,7 @@ impl<C> WebAuthn for C
             pin_provider,
             op.timeout,
         )
-            .await?;
+        .await?;
 
         let response = self.ctap2_get_assertion(&ctap2_request, op.timeout).await?;
         let count = response.credentials_count.unwrap_or(1);
@@ -211,6 +217,91 @@ impl<C> WebAuthn for C
         }
         Ok(fido_protocol)
     }
+
+    async fn webauthn_change_pin(
+        &mut self,
+        pin_provider: &Box<dyn PinProvider>,
+        new_pin: String,
+        timeout: Duration,
+    ) -> Result<(), Error> {
+        let get_info_response = self.ctap2_get_info().await?;
+
+        // If the minPINLength member of the authenticatorGetInfo response is absent, then let platformMinPINLengthInCodePoints be 4.
+        if new_pin.as_bytes().len() < get_info_response.min_pin_length.unwrap_or(4) as usize {
+            // If platformCollectedPinLengthInCodePoints is less than platformMinPINLengthInCodePoints then the platform SHOULD display a "PIN too short" error message to the user.
+            // TODO: New error for "PIN too short" vs. "PIN too long"?
+            return Err(Error::Ctap(CtapError::PINPolicyViolation));
+        }
+
+        // If the byte length of "newPin" is greater than the max UTF-8 representation limit of 63 bytes, then the platform SHOULD display a "PIN too long" error message to the user.
+        if new_pin.as_bytes().len() >= 64 {
+            // TODO: New error for "PIN too short" vs. "PIN too long"?
+            return Err(Error::Ctap(CtapError::PINPolicyViolation));
+        }
+
+        let current_pin = match get_info_response.options.as_ref().unwrap().get("clientPin") {
+            // Obtaining the current PIN, if one is set
+            Some(true) => Some(obtain_pin(self, pin_provider, timeout).await?),
+
+            // No PIN set yet
+            Some(false) => None,
+
+            // Device does not support PIN
+            None => {
+                // TODO: What's the correct error here? Spec is unclear. Maybe just not early-return and let the device error out for us.
+                return Err(Error::Ctap(CtapError::UnsupportedOption));
+            }
+        };
+
+        // In preparation for obtaining pinUvAuthToken, the platform:
+        // * Obtains a shared secret.
+        let uv_proto = select_uv_proto(&get_info_response).await?;
+        let (public_key, shared_secret) = obtain_shared_secret(self, &uv_proto, timeout).await?;
+
+        // paddedPin is newPin padded on the right with 0x00 bytes to make it 64 bytes long. (Since the maximum length of newPin is 63 bytes, there is always at least one byte of padding.)
+        let mut padded_new_pin = new_pin.as_bytes().to_vec();
+        padded_new_pin.resize(64, 0x00);
+
+        // newPinEnc: the result of calling encrypt(shared secret, paddedPin) where
+        let new_pin_enc = uv_proto.encrypt(&shared_secret, &padded_new_pin)?;
+
+        let req = match current_pin {
+            Some(curr_pin) => {
+                // pinHashEnc: The result of calling encrypt(shared secret, LEFT(SHA-256(curPin), 16)).
+                let pin_hash = pin_hash(&curr_pin);
+                let pin_hash_enc = uv_proto.encrypt(&shared_secret, &pin_hash)?;
+
+                // pinUvAuthParam: the result of calling authenticate(shared secret, newPinEnc || pinHashEnc)
+                let uv_auth_param = uv_proto.authenticate(
+                    &shared_secret,
+                    &[new_pin_enc.as_slice(), pin_hash_enc.as_slice()].concat(),
+                );
+
+                Ctap2ClientPinRequest::new_change_pin(
+                    uv_proto.version(),
+                    &new_pin_enc,
+                    &pin_hash_enc,
+                    public_key,
+                    &uv_auth_param,
+                )
+            }
+            None => {
+                // pinUvAuthParam: the result of calling authenticate(shared secret, newPinEnc).
+                let uv_auth_param = uv_proto.authenticate(&shared_secret, &new_pin_enc);
+
+                Ctap2ClientPinRequest::new_set_pin(
+                    uv_proto.version(),
+                    &new_pin_enc,
+                    public_key,
+                    &uv_auth_param,
+                )
+            }
+        };
+
+        // On success, this is an all-empty Ctap2ClientPinResponse
+        let _ = self.ctap2_client_pin(&req, timeout).await?;
+        Ok(())
+    }
 }
 
 #[instrument(skip_all)]
@@ -221,9 +312,9 @@ async fn user_verification<R, C>(
     pin_provider: &Box<dyn PinProvider>,
     timeout: Duration,
 ) -> Result<(), Error>
-    where
-        C: Channel,
-        R: Ctap2UserVerifiableRequest,
+where
+    C: Channel,
+    R: Ctap2UserVerifiableRequest,
 {
     let get_info_response = channel.ctap2_get_info().await?;
 
@@ -325,8 +416,8 @@ async fn obtain_shared_secret<C>(
     pin_proto: &Box<dyn PinUvAuthProtocol>,
     timeout: Duration,
 ) -> Result<(PublicKey, Vec<u8>), Error>
-    where
-        C: Channel,
+where
+    C: Channel,
 {
     let client_pin_request = Ctap2ClientPinRequest::new_get_key_agreement(pin_proto.version());
     let client_pin_response = channel
@@ -344,8 +435,8 @@ async fn obtain_pin<C>(
     pin_provider: &Box<dyn PinProvider>,
     timeout: Duration,
 ) -> Result<Vec<u8>, Error>
-    where
-        C: Channel,
+where
+    C: Channel,
 {
     let attempts_left = channel
         .ctap2_client_pin(&Ctap2ClientPinRequest::new_get_pin_retries(), timeout)

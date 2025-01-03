@@ -562,7 +562,7 @@ pub struct Ctap2GetInfoResponse {
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_pin_length: Option<u32>,
+    pub min_pin_length: Option<u32>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -784,6 +784,47 @@ impl Ctap2ClientPinRequest {
             permissions_rpid: Some(permissions_rpid.to_owned()),
         }
     }
+
+    pub fn new_change_pin(
+        protocol: Ctap2PinUvAuthProtocol,
+        new_pin_enc: &[u8],
+        curr_pin_enc: &[u8],
+        public_key: PublicKey,
+        uv_auth_param: &[u8],
+    ) -> Self {
+        Self {
+            protocol: Some(protocol),
+            command: Ctap2PinUvAuthProtocolCommand::ChangePin,
+            key_agreement: Some(public_key),
+            uv_auth_param: Some(ByteBuf::from(uv_auth_param)),
+            new_pin_encrypted: Some(ByteBuf::from(new_pin_enc)),
+            pin_hash_encrypted: Some(ByteBuf::from(curr_pin_enc)),
+            unused_07: (),
+            unused_08: (),
+            permissions: None,
+            permissions_rpid: None,
+        }
+    }
+
+    pub fn new_set_pin(
+        protocol: Ctap2PinUvAuthProtocol,
+        new_pin_enc: &[u8],
+        public_key: PublicKey,
+        uv_auth_param: &[u8],
+    ) -> Self {
+        Self {
+            protocol: Some(protocol),
+            command: Ctap2PinUvAuthProtocolCommand::SetPin,
+            key_agreement: Some(public_key),
+            uv_auth_param: Some(ByteBuf::from(uv_auth_param)),
+            new_pin_encrypted: Some(ByteBuf::from(new_pin_enc)),
+            pin_hash_encrypted: None,
+            unused_07: (),
+            unused_08: (),
+            permissions: None,
+            permissions_rpid: None,
+        }
+    }
 }
 
 bitflags! {
@@ -817,7 +858,7 @@ pub enum Ctap2PinUvAuthProtocolCommand {
     GetPinUvAuthTokenUsingPinWithPermissions = 0x09,
 }
 
-#[derive(Debug, Clone, DeserializeIndexed)]
+#[derive(Debug, Clone, Default, DeserializeIndexed)]
 #[serde_indexed(offset = 1)]
 pub struct Ctap2ClientPinResponse {
     /// keyAgreement (0x01)
