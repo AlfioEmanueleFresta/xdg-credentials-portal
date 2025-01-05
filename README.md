@@ -56,7 +56,7 @@ This is a very early stage idea, no proposed spec exists yet.
 
 Here is an high-level architecture diagram of the proposed service and how it will interact with its clients:
 
-![High-Level Architecture](./images/diagram-1.png)
+![High-Level Architecture](./images/diagram-1.svg)
 
 Footnotes:
 

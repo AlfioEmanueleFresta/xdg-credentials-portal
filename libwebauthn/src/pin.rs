@@ -3,6 +3,7 @@ use super::transport::error::Error;
 use aes::cipher::{block_padding::NoPadding, BlockDecryptMut};
 use async_trait::async_trait;
 use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+use ctap_types::cose;
 use hkdf::Hkdf;
 use hmac::Mac;
 use p256::{
@@ -13,7 +14,6 @@ use rand::{rngs::OsRng, thread_rng, Rng};
 use sha2::{Digest, Sha256};
 use tracing::{error, info, instrument, warn};
 use x509_parser::nom::AsBytes;
-use ctap_types::cose;
 
 use crate::proto::{ctap2::Ctap2PinUvAuthProtocol, CtapError};
 
@@ -176,8 +176,8 @@ impl ECPrivateKeyPinUvAuthProtocol for PinUvAuthProtocolOne {
 }
 
 impl<P> ECDHPinUvAuthProtocol for P
-    where
-        P: ECPrivateKeyPinUvAuthProtocol,
+where
+    P: ECPrivateKeyPinUvAuthProtocol,
 {
     #[instrument(skip_all)]
     fn encapsulate(
