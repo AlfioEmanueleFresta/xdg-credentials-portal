@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Display};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use p256::ecdh::EphemeralSecret;
@@ -70,6 +70,9 @@ pub struct CableQrCode {
     ///   prior to the authenticator receiving any CTAP message. While this hint SHOULD be as accurate as
     ///   possible, it does not constrain the subsequent CTAP messages that the platform may send.
     pub operation_hint: QrCodeOperationHint,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_non_discoverable_mc: Option<bool>,
 }
 
 impl ToString for CableQrCode {
@@ -146,14 +149,23 @@ impl<'d> CableQrCodeDevice<'d> {
         let mut qr_secret = [0u8; 16];
         OsRng::default().fill_bytes(&mut qr_secret);
 
+        let current_unix_time = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .ok()
+            .map(|t| t.as_secs());
+
         Self {
             qr_code: CableQrCode {
                 public_key: ByteBuf::from(public_key.as_bytes()),
                 qr_secret: ByteBuf::from(qr_secret),
                 known_tunnel_domains_count: KNOWN_TUNNEL_DOMAINS.len() as u8,
-                current_time: None,
+                current_time: current_unix_time,
                 operation_hint: hint,
                 state_assisted: Some(state_assisted),
+                supports_non_discoverable_mc: match hint {
+                    QrCodeOperationHint::MakeCredential => Some(true),
+                    _ => None,
+                },
             },
             private_key: private_key_scalar,
             store,
