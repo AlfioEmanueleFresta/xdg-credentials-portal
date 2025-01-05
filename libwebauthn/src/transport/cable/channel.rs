@@ -1,19 +1,10 @@
-use core::error;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures::stream::FusedStream;
-use futures::SinkExt;
-use snow::TransportState;
-use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::task;
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::StreamExt;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
-use tracing::{debug, error, instrument, trace, warn};
-use tungstenite::protocol::Message; // This brings the `next()` method into scope
+use tracing::error;
 
 use crate::proto::{
     ctap1::apdu::{ApduRequest, ApduResponse},
@@ -70,24 +61,24 @@ impl<'d> Channel for CableChannel<'d> {
         // TODO Send CableTunnelMessageType#Shutdown and drop the connection
     }
 
-    async fn apdu_send(&self, request: &ApduRequest, timeout: Duration) -> Result<(), Error> {
+    async fn apdu_send(&self, _request: &ApduRequest, _timeout: Duration) -> Result<(), Error> {
         error!("APDU send not supported in caBLE transport");
         Err(Error::Transport(TransportError::TransportUnavailable))
     }
 
-    async fn apdu_recv(&self, timeout: Duration) -> Result<ApduResponse, Error> {
+    async fn apdu_recv(&self, _timeout: Duration) -> Result<ApduResponse, Error> {
         error!("APDU recv not supported in caBLE transport");
         Err(Error::Transport(TransportError::TransportUnavailable))
     }
 
-    async fn cbor_send(&mut self, request: &CborRequest, timeout: Duration) -> Result<(), Error> {
+    async fn cbor_send(&mut self, request: &CborRequest, _timeout: Duration) -> Result<(), Error> {
         self.cbor_sender
             .send(request.clone())
             .await
             .or(Err(Error::Transport(TransportError::TransportUnavailable)))
     }
 
-    async fn cbor_recv(&mut self, timeout: Duration) -> Result<CborResponse, Error> {
+    async fn cbor_recv(&mut self, _timeout: Duration) -> Result<CborResponse, Error> {
         self.cbor_receiver
             .recv()
             .await

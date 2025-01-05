@@ -4,7 +4,6 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use tracing::{debug, info, instrument, span, trace, warn, Level};
-use x509_parser::nom::bytes::complete::tag_no_case;
 
 use super::device::{FidoDevice as Device, FidoEndpoints as Endpoints};
 use super::gatt::{get_gatt_characteristic, get_gatt_service};

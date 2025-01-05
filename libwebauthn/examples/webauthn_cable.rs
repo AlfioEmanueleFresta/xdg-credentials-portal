@@ -35,7 +35,7 @@ fn setup_logging() {
 pub async fn main() -> Result<(), Box<dyn Error>> {
     setup_logging();
 
-    let mut device_info_store: Box<dyn CableKnownDeviceInfoStore> =
+    let _device_info_store: Box<dyn CableKnownDeviceInfoStore> =
         Box::new(EphemeralDeviceInfoStore::default());
 
     // Create QR code

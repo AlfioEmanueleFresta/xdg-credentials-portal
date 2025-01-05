@@ -2,7 +2,6 @@ use std::fmt::{Debug, Display};
 use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
-use p256::ecdh::EphemeralSecret;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
 use p256::{NonZeroScalar, SecretKey};
 use rand::rngs::OsRng;
@@ -239,7 +238,7 @@ impl Display for CableQrCodeDevice<'_> {
 #[async_trait]
 impl<'d> Device<'d, Cable, CableChannel<'d>> for CableQrCodeDevice<'_> {
     async fn channel(&'d mut self) -> Result<CableChannel<'d>, Error> {
-        let (device, advert) = self.await_advertisement().await?;
+        let (_device, advert) = self.await_advertisement().await?;
 
         let Some(tunnel_domain) =
             tunnel::decode_tunnel_server_domain(advert.encoded_tunnel_server_domain)

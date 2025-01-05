@@ -61,7 +61,7 @@ pub struct CableKnownDeviceInfo {
 #[derive(Debug)]
 pub struct CableKnownDevice<'d> {
     pub device_info: CableKnownDeviceInfo,
-    store: &'d mut Box<dyn CableKnownDeviceInfoStore>,
+    _store: &'d mut Box<dyn CableKnownDeviceInfoStore>,
 }
 
 impl<'d> Display for CableKnownDevice<'d> {

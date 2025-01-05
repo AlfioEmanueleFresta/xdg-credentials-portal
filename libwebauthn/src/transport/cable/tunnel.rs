@@ -1,29 +1,23 @@
 use ctap_types::serde::cbor_deserialize;
-use futures::{Sink, SinkExt, StreamExt};
-use p256::ecdh::EphemeralSecret;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
-use p256::elliptic_curve::FieldBytes;
-use p256::{NonZeroScalar, SecretKey};
+use futures::{SinkExt, StreamExt};
+use p256::NonZeroScalar;
 use serde::Deserialize;
 use serde_bytes::ByteBuf;
 use serde_indexed::DeserializeIndexed;
 use sha2::{Digest, Sha256};
-use snow::params::NoiseParams;
 use snow::{Builder, TransportState};
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::task::{self, JoinHandle};
 use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 use super::channel::{CableChannel, CableChannelDevice};
 use super::qr_code_device::CableQrCodeDevice;
-use crate::proto::ctap2::cbor::{self, CborRequest, CborResponse};
+use crate::proto::ctap2::cbor::{CborRequest, CborResponse};
 use crate::proto::ctap2::{Ctap2CommandCode, Ctap2GetInfoResponse};
-use crate::transport::error::CtapError;
 use crate::transport::error::Error;
 use crate::webauthn::TransportError;
 
@@ -39,6 +33,7 @@ const PADDING_GRANULARITY: usize = 32;
 const CABLE_PROLOGUE_QR_INITIATED: &[u8] = &[1 as u8];
 
 enum TransactionType {
+    #[allow(dead_code)] // TODO StateAssisted
     StateAssisted,
     QRInitiated,
 }
@@ -161,7 +156,7 @@ pub async fn connect<'d>(
     }
     debug!("Tunnel server returned success");
 
-    let mut noise_state = do_handshake(
+    let noise_state = do_handshake(
         &mut ws_stream,
         psk,
         private_key,
@@ -309,7 +304,7 @@ async fn connection(
     mut ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
     mut noise_state: TransportState,
     mut cbor_tx_recv: Receiver<CborRequest>,
-    mut cbor_rx_send: Sender<CborResponse>,
+    cbor_rx_send: Sender<CborResponse>,
 ) {
     // Fetch the inital message
     let get_info_response_serialized: Vec<u8> = match ws_stream.next().await {
@@ -343,7 +338,7 @@ async fn connection(
                     Ok(message) => {
                         debug!("Received WSS message");
                         trace!(?message);
-                        connection_recv(message, &cbor_rx_send, &mut noise_state).await;
+                        let _ = connection_recv(message, &cbor_rx_send, &mut noise_state).await;
                     }
                 };
             }
@@ -353,11 +348,11 @@ async fn connection(
                     Ctap2CommandCode::AuthenticatorGetInfo => {
                         debug!("Responding to GetInfo request with cached response");
                         let response = CborResponse::new_success_from_slice(&get_info_response_serialized);
-                        cbor_rx_send.send(response).await;
+                        let _ = cbor_rx_send.send(response).await;
                     }
                     _ => {
                         debug!(?request.command, "Sending CBOR request");
-                        connection_send(request, &mut ws_stream, &mut noise_state).await;
+                        let _ = connection_send(request, &mut ws_stream, &mut noise_state).await;
                     }
                 }
             }

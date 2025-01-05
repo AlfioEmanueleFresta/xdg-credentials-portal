@@ -4,8 +4,6 @@ use std::convert::TryFrom;
 use std::io::Cursor as IOCursor;
 
 use byteorder::{BigEndian, ReadBytesExt};
-use ctap_types::ctap2::make_credential::AttestationStatement;
-use futures::future::Map;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use serde_bytes::ByteBuf;
 use serde_cbor::Value;
