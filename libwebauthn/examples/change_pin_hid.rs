@@ -3,10 +3,10 @@ use std::time::Duration;
 
 use tracing_subscriber::{self, EnvFilter};
 
-use libwebauthn::pin::{PinProvider, StdinPromptPinProvider};
+use libwebauthn::pin::{PinManagement, PinProvider, StdinPromptPinProvider};
 use libwebauthn::transport::hid::list_devices;
 use libwebauthn::transport::Device;
-use libwebauthn::webauthn::{Error as WebAuthnError, WebAuthn};
+use libwebauthn::webauthn::Error as WebAuthnError;
 use std::io::{self, Write};
 use text_io::read;
 
@@ -44,7 +44,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         let response = loop {
             match channel
-                .webauthn_change_pin(&pin_provider, new_pin.clone(), TIMEOUT)
+                .change_pin(&pin_provider, new_pin.clone(), TIMEOUT)
                 .await
             {
                 Ok(response) => break Ok(response),
