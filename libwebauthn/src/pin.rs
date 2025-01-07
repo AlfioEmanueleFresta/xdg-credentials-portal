@@ -22,7 +22,7 @@ use crate::{
         ctap2::{Ctap2, Ctap2ClientPinRequest, Ctap2PinUvAuthProtocol},
         CtapError,
     },
-    transport::Channel,
+    transport::{error::PlatformError, Channel},
     webauthn::{obtain_pin, obtain_shared_secret, select_uv_proto},
 };
 
@@ -455,14 +455,12 @@ where
         // If the minPINLength member of the authenticatorGetInfo response is absent, then let platformMinPINLengthInCodePoints be 4.
         if new_pin.as_bytes().len() < get_info_response.min_pin_length.unwrap_or(4) as usize {
             // If platformCollectedPinLengthInCodePoints is less than platformMinPINLengthInCodePoints then the platform SHOULD display a "PIN too short" error message to the user.
-            // TODO: New error for "PIN too short" vs. "PIN too long"?
-            return Err(Error::Ctap(CtapError::PINPolicyViolation));
+            return Err(Error::Platform(PlatformError::PinTooShort));
         }
 
         // If the byte length of "newPin" is greater than the max UTF-8 representation limit of 63 bytes, then the platform SHOULD display a "PIN too long" error message to the user.
         if new_pin.as_bytes().len() >= 64 {
-            // TODO: New error for "PIN too short" vs. "PIN too long"?
-            return Err(Error::Ctap(CtapError::PINPolicyViolation));
+            return Err(Error::Platform(PlatformError::PinTooLong));
         }
 
         let current_pin = match get_info_response.options.as_ref().unwrap().get("clientPin") {
