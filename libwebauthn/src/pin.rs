@@ -472,8 +472,7 @@ where
 
             // Device does not support PIN
             None => {
-                // TODO: What's the correct error here? Spec is unclear. Maybe just not early-return and let the device error out for us.
-                return Err(Error::Ctap(CtapError::UnsupportedOption));
+                return Err(Error::Platform(PlatformError::PinNotSupported));
             }
         };
 

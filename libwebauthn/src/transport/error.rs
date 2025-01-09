@@ -4,6 +4,7 @@ pub use crate::proto::CtapError;
 pub enum PlatformError {
     PinTooShort,
     PinTooLong,
+    PinNotSupported,
 }
 
 impl std::error::Error for PlatformError {}
