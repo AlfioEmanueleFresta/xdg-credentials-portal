@@ -15,6 +15,7 @@ use ctap_types::cose::PublicKey;
 
 use crate::ops::webauthn::GetAssertionRequest;
 use crate::ops::webauthn::MakeCredentialRequest;
+use crate::pin::PinUvAuthProtocol;
 use crate::proto::ctap1::Ctap1Transport;
 use crate::transport::error::CtapError;
 
@@ -30,6 +31,7 @@ pub enum Ctap2CommandCode {
     AuthenticatorClientPin = 0x06,
     AuthenticatorGetNextAssertion = 0x08,
     AuthenticatorSelection = 0x0B,
+    AuthenticatorConfig = 0x0D,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -439,10 +441,14 @@ pub struct Ctap2GetAssertionResponse {
 
 pub trait Ctap2UserVerifiableRequest {
     fn ensure_uv_set(&mut self);
-    fn set_uv_auth(&mut self, proto: Ctap2PinUvAuthProtocol, param: &[u8]);
+    fn calculate_and_set_uv_auth(
+        &mut self,
+        uv_proto: &Box<dyn PinUvAuthProtocol>,
+        uv_auth_token: &[u8],
+    );
     fn client_data_hash(&self) -> &[u8];
     fn permissions(&self) -> ClientPinRequestPermissions;
-    fn permissions_rpid(&self) -> &str;
+    fn permissions_rpid(&self) -> Option<&str>;
 }
 
 impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
@@ -455,9 +461,14 @@ impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
         });
     }
 
-    fn set_uv_auth(&mut self, proto: Ctap2PinUvAuthProtocol, param: &[u8]) {
-        self.pin_auth_proto = Some(proto as u32);
-        self.pin_auth_param = Some(ByteBuf::from(param));
+    fn calculate_and_set_uv_auth(
+        &mut self,
+        uv_proto: &Box<dyn PinUvAuthProtocol>,
+        uv_auth_token: &[u8],
+    ) {
+        let uv_auth_param = uv_proto.authenticate(uv_auth_token, self.client_data_hash());
+        self.pin_auth_proto = Some(uv_proto.version() as u32);
+        self.pin_auth_param = Some(ByteBuf::from(uv_auth_param));
     }
 
     fn client_data_hash(&self) -> &[u8] {
@@ -470,8 +481,8 @@ impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
             | ClientPinRequestPermissions::GET_ASSERTION;
     }
 
-    fn permissions_rpid(&self) -> &str {
-        &self.relying_party.id
+    fn permissions_rpid(&self) -> Option<&str> {
+        Some(&self.relying_party.id)
     }
 }
 
@@ -483,9 +494,14 @@ impl Ctap2UserVerifiableRequest for Ctap2GetAssertionRequest {
         });
     }
 
-    fn set_uv_auth(&mut self, proto: Ctap2PinUvAuthProtocol, param: &[u8]) {
-        self.pin_auth_proto = Some(proto as u32);
-        self.pin_auth_param = Some(ByteBuf::from(param));
+    fn calculate_and_set_uv_auth(
+        &mut self,
+        uv_proto: &Box<dyn PinUvAuthProtocol>,
+        uv_auth_token: &[u8],
+    ) {
+        let uv_auth_param = uv_proto.authenticate(uv_auth_token, self.client_data_hash());
+        self.pin_auth_proto = Some(uv_proto.version() as u32);
+        self.pin_auth_param = Some(ByteBuf::from(uv_auth_param));
     }
 
     fn client_data_hash(&self) -> &[u8] {
@@ -496,8 +512,8 @@ impl Ctap2UserVerifiableRequest for Ctap2GetAssertionRequest {
         return ClientPinRequestPermissions::GET_ASSERTION;
     }
 
-    fn permissions_rpid(&self) -> &str {
-        &self.relying_party_id
+    fn permissions_rpid(&self) -> Option<&str> {
+        Some(&self.relying_party_id)
     }
 }
 
@@ -749,7 +765,7 @@ impl Ctap2ClientPinRequest {
         public_key: PublicKey,
         pin_hash_enc: &[u8],
         permissions: ClientPinRequestPermissions,
-        permissions_rpid: &str,
+        permissions_rpid: Option<&str>,
     ) -> Self {
         Self {
             protocol: Some(protocol),
@@ -761,7 +777,7 @@ impl Ctap2ClientPinRequest {
             unused_07: (),
             unused_08: (),
             permissions: Some(permissions.bits()),
-            permissions_rpid: Some(permissions_rpid.to_owned()),
+            permissions_rpid: permissions_rpid.map(str::to_owned),
         }
     }
 
@@ -769,7 +785,7 @@ impl Ctap2ClientPinRequest {
         protocol: Ctap2PinUvAuthProtocol,
         public_key: PublicKey,
         permissions: ClientPinRequestPermissions,
-        permissions_rpid: &str,
+        permissions_rpid: Option<&str>,
     ) -> Self {
         Self {
             protocol: Some(protocol),
@@ -781,7 +797,7 @@ impl Ctap2ClientPinRequest {
             unused_07: (),
             unused_08: (),
             permissions: Some(permissions.bits()),
-            permissions_rpid: Some(permissions_rpid.to_owned()),
+            permissions_rpid: permissions_rpid.map(str::to_owned),
         }
     }
 
@@ -885,4 +901,126 @@ pub struct Ctap2ClientPinResponse {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uv_retries: Option<u32>,
+}
+
+#[derive(Debug, Clone, SerializeIndexed)]
+#[serde_indexed(offset = 1)]
+pub struct Ctap2AuthenticatorConfigRequest {
+    // subCommand (0x01)
+    pub subcommand: Ctap2AuthenticatorConfigCommand,
+
+    // subCommandParams (0x02)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subcommand_params: Option<Ctap2AuthenticatorConfigParams>,
+
+    ///pinUvAuthProtocol (0x03)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<Ctap2PinUvAuthProtocol>,
+
+    /// pinUvAuthParam (0x04):
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uv_auth_param: Option<ByteBuf>,
+}
+
+impl Ctap2AuthenticatorConfigRequest {
+    pub(crate) fn new_toggle_always_uv() -> Self {
+        Ctap2AuthenticatorConfigRequest {
+            subcommand: Ctap2AuthenticatorConfigCommand::ToggleAlwaysUv,
+            subcommand_params: None,
+            protocol: None,      // Will be filled out later by user_verification()
+            uv_auth_param: None, // Will be filled out later by user_verification()
+        }
+    }
+
+    pub(crate) fn new_enable_enterprise_attestation() -> Self {
+        Ctap2AuthenticatorConfigRequest {
+            subcommand: Ctap2AuthenticatorConfigCommand::EnableEnterpriseAttestation,
+            subcommand_params: None,
+            protocol: None,      // Will be filled out later by user_verification()
+            uv_auth_param: None, // Will be filled out later by user_verification()
+        }
+    }
+
+    pub(crate) fn new_force_change_pin(force_change_pin: bool) -> Self {
+        let subcommand_params =
+            Ctap2AuthenticatorConfigParams::SetMinPINLength(Ctap2SetMinPINLengthParams {
+                new_min_pin_length: None,
+                min_pin_length_rpids: None,
+                force_change_pin: Some(force_change_pin),
+            });
+        Ctap2AuthenticatorConfigRequest {
+            subcommand: Ctap2AuthenticatorConfigCommand::SetMinPINLength,
+            subcommand_params: Some(subcommand_params),
+            protocol: None,      // Will be filled out later by user_verification()
+            uv_auth_param: None, // Will be filled out later by user_verification()
+        }
+    }
+
+    pub(crate) fn new_set_min_pin_length(new_pin_length: u64) -> Self {
+        let subcommand_params =
+            Ctap2AuthenticatorConfigParams::SetMinPINLength(Ctap2SetMinPINLengthParams {
+                new_min_pin_length: Some(new_pin_length),
+                min_pin_length_rpids: None,
+                force_change_pin: None,
+            });
+        Ctap2AuthenticatorConfigRequest {
+            subcommand: Ctap2AuthenticatorConfigCommand::SetMinPINLength,
+            subcommand_params: Some(subcommand_params),
+            protocol: None,      // Will be filled out later by user_verification()
+            uv_auth_param: None, // Will be filled out later by user_verification()
+        }
+    }
+
+    pub(crate) fn new_set_min_pin_length_rpids(rpids: Vec<String>) -> Self {
+        let subcommand_params =
+            Ctap2AuthenticatorConfigParams::SetMinPINLengthRPIDs(Ctap2SetMinPINLengthParams {
+                new_min_pin_length: None,
+                min_pin_length_rpids: Some(rpids),
+                force_change_pin: None,
+            });
+        Ctap2AuthenticatorConfigRequest {
+            subcommand: Ctap2AuthenticatorConfigCommand::SetMinPINLength,
+            subcommand_params: Some(subcommand_params),
+            protocol: None,      // Will be filled out later by user_verification()
+            uv_auth_param: None, // Will be filled out later by user_verification()
+        }
+    }
+}
+
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, FromPrimitive, PartialEq, Serialize_repr, Deserialize_repr)]
+pub enum Ctap2AuthenticatorConfigCommand {
+    EnableEnterpriseAttestation = 0x01,
+    ToggleAlwaysUv = 0x02,
+    SetMinPINLength = 0x03,
+    VendorPrototype = 0xFF,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum Ctap2AuthenticatorConfigParams {
+    SetMinPINLength(Ctap2SetMinPINLengthParams),
+    SetMinPINLengthRPIDs(Ctap2SetMinPINLengthParams),
+}
+
+#[derive(Debug, Clone, SerializeIndexed)]
+#[serde_indexed(offset = 1)]
+pub struct Ctap2SetMinPINLengthParams {
+    // newMinPINLength (0x01)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_min_pin_length: Option<u64>,
+
+    // minPinLengthRPIDs (0x02)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_pin_length_rpids: Option<Vec<String>>,
+
+    // forceChangePin (0x03)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force_change_pin: Option<bool>,
 }
