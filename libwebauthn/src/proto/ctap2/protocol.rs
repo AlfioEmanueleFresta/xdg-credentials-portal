@@ -148,10 +148,16 @@ where
             CtapError::Ok => (),
             error => return Err(Error::Ctap(error)),
         };
-        let ctap_response: Ctap2ClientPinResponse =
-            from_slice(&cbor_response.data.unwrap()).unwrap();
-        debug!("CTAP2 ClientPin successful");
-        trace!(?ctap_response);
-        Ok(ctap_response)
+        if let Some(data) = cbor_response.data {
+            let ctap_response: Ctap2ClientPinResponse = from_slice(&data).unwrap();
+            debug!("CTAP2 ClientPin successful");
+            trace!(?ctap_response);
+            Ok(ctap_response)
+        } else {
+            // Seems like a bug in serde_indexed: https://github.com/trussed-dev/serde-indexed/issues/10
+            // Can't deserialize an empty vec[], even though everything is optional and marked as default.
+            // So we work around it here by creating our own default value.
+            Ok(Ctap2ClientPinResponse::default())
+        }
     }
 }

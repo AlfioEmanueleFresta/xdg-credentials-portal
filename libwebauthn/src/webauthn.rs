@@ -19,8 +19,8 @@ use crate::proto::ctap2::{
     Ctap2, Ctap2ClientPinRequest, Ctap2GetAssertionRequest, Ctap2GetInfoResponse,
     Ctap2MakeCredentialRequest, Ctap2UserVerifiableRequest, Ctap2UserVerificationOperation,
 };
-use crate::transport::Channel;
 pub use crate::transport::error::{CtapError, Error, TransportError};
+use crate::transport::Channel;
 
 #[async_trait]
 pub trait WebAuthn {
@@ -53,11 +53,10 @@ pub trait WebAuthn {
         &mut self,
         op: &GetAssertionRequest,
     ) -> Result<GetAssertionResponse, Error>;
-
     async fn _negotiate_protocol(&mut self, allow_u2f: bool) -> Result<FidoProtocol, Error>;
 }
 
-async fn select_uv_proto(
+pub(crate) async fn select_uv_proto(
     get_info_response: &Ctap2GetInfoResponse,
 ) -> Result<Box<dyn PinUvAuthProtocol>, Error> {
     for &protocol in get_info_response.pin_auth_protos.iter().flatten() {
@@ -74,8 +73,8 @@ async fn select_uv_proto(
 
 #[async_trait]
 impl<C> WebAuthn for C
-    where
-        C: Channel,
+where
+    C: Channel,
 {
     #[instrument(skip_all, fields(dev = % self))]
     async fn webauthn_make_credential(
@@ -104,7 +103,7 @@ impl<C> WebAuthn for C
             pin_provider,
             op.timeout,
         )
-            .await?;
+        .await?;
         self.ctap2_make_credential(&ctap2_request, op.timeout).await
     }
 
@@ -145,7 +144,7 @@ impl<C> WebAuthn for C
             pin_provider,
             op.timeout,
         )
-            .await?;
+        .await?;
 
         let response = self.ctap2_get_assertion(&ctap2_request, op.timeout).await?;
         let count = response.credentials_count.unwrap_or(1);
@@ -221,9 +220,9 @@ async fn user_verification<R, C>(
     pin_provider: &Box<dyn PinProvider>,
     timeout: Duration,
 ) -> Result<(), Error>
-    where
-        C: Channel,
-        R: Ctap2UserVerifiableRequest,
+where
+    C: Channel,
+    R: Ctap2UserVerifiableRequest,
 {
     let get_info_response = channel.ctap2_get_info().await?;
 
@@ -320,13 +319,13 @@ async fn user_verification<R, C>(
     Ok(())
 }
 
-async fn obtain_shared_secret<C>(
+pub(crate) async fn obtain_shared_secret<C>(
     channel: &mut C,
     pin_proto: &Box<dyn PinUvAuthProtocol>,
     timeout: Duration,
 ) -> Result<(PublicKey, Vec<u8>), Error>
-    where
-        C: Channel,
+where
+    C: Channel,
 {
     let client_pin_request = Ctap2ClientPinRequest::new_get_key_agreement(pin_proto.version());
     let client_pin_response = channel
@@ -339,13 +338,13 @@ async fn obtain_shared_secret<C>(
     pin_proto.encapsulate(&public_key)
 }
 
-async fn obtain_pin<C>(
+pub(crate) async fn obtain_pin<C>(
     channel: &mut C,
     pin_provider: &Box<dyn PinProvider>,
     timeout: Duration,
 ) -> Result<Vec<u8>, Error>
-    where
-        C: Channel,
+where
+    C: Channel,
 {
     let attempts_left = channel
         .ctap2_client_pin(&Ctap2ClientPinRequest::new_get_pin_retries(), timeout)
