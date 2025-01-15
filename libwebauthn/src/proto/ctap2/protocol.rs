@@ -5,15 +5,15 @@ use serde_cbor::from_slice;
 use tracing::{debug, instrument, trace, warn};
 
 use crate::proto::ctap2::cbor::CborRequest;
-use crate::proto::ctap2::Ctap2CommandCode;
+use crate::proto::ctap2::{Ctap2BioEnrollmentResponse, Ctap2CommandCode};
 use crate::transport::error::{CtapError, Error};
 use crate::transport::Channel;
 
 use super::model::Ctap2ClientPinResponse;
 use super::{
-    Ctap2AuthenticatorConfigRequest, Ctap2ClientPinRequest, Ctap2GetAssertionRequest,
-    Ctap2GetAssertionResponse, Ctap2GetInfoResponse, Ctap2MakeCredentialRequest,
-    Ctap2MakeCredentialResponse,
+    Ctap2AuthenticatorConfigRequest, Ctap2BioEnrollmentRequest, Ctap2ClientPinRequest,
+    Ctap2GetAssertionRequest, Ctap2GetAssertionResponse, Ctap2GetInfoResponse,
+    Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse,
 };
 
 const TIMEOUT_GET_INFO: Duration = Duration::from_millis(250);
@@ -46,6 +46,11 @@ pub trait Ctap2 {
         request: &Ctap2AuthenticatorConfigRequest,
         timeout: Duration,
     ) -> Result<(), Error>;
+    async fn ctap2_bio_enrollment(
+        &mut self,
+        request: &Ctap2BioEnrollmentRequest,
+        timeout: Duration,
+    ) -> Result<Ctap2BioEnrollmentResponse, Error>;
 }
 
 #[async_trait]
@@ -190,6 +195,32 @@ where
                 );
                 return Err(Error::Ctap(error));
             }
+        }
+    }
+
+    #[instrument(skip_all)]
+    async fn ctap2_bio_enrollment(
+        &mut self,
+        request: &Ctap2BioEnrollmentRequest,
+        _timeout: Duration,
+    ) -> Result<Ctap2BioEnrollmentResponse, Error> {
+        trace!(?request);
+        self.cbor_send(&request.into(), TIMEOUT_GET_INFO).await?;
+        let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
+        match cbor_response.status_code {
+            CtapError::Ok => (),
+            error => return Err(Error::Ctap(error)),
+        };
+        if let Some(data) = cbor_response.data {
+            let ctap_response: Ctap2BioEnrollmentResponse = from_slice(&data).unwrap();
+            debug!("CTAP2 BioEnrollment successful");
+            trace!(?ctap_response);
+            Ok(ctap_response)
+        } else {
+            // Seems like a bug in serde_indexed: https://github.com/trussed-dev/serde-indexed/issues/10
+            // Can't deserialize an empty vec[], even though everything is optional and marked as default.
+            // So we work around it here by creating our own default value.
+            Ok(Ctap2BioEnrollmentResponse::default())
         }
     }
 }
