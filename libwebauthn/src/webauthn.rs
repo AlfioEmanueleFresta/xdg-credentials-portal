@@ -213,7 +213,7 @@ where
 }
 
 #[instrument(skip_all)]
-async fn user_verification<R, C>(
+pub(crate) async fn user_verification<R, C>(
     channel: &mut C,
     user_verification: UserVerificationRequirement,
     ctap2_request: &mut R,
@@ -307,14 +307,12 @@ where
         return Err(Error::Ctap(CtapError::Other));
     };
 
+    let uv_auth_token = uv_proto.decrypt(&shared_secret, &encrypted_pin_uv_auth_token)?;
+
     // If successful, the platform creates the pinUvAuthParam parameter by calling
     // authenticate(pinUvAuthToken, clientDataHash), and goes to Step 1.1.1.
-    let uv_auth_token = uv_proto.decrypt(&shared_secret, &encrypted_pin_uv_auth_token)?;
-    let uv_auth_param =
-        uv_proto.authenticate(uv_auth_token.as_slice(), ctap2_request.client_data_hash());
-
     // Sets the pinUvAuthProtocol parameter to the value as selected when it obtained the shared secret.
-    ctap2_request.set_uv_auth(uv_proto.version(), uv_auth_param.as_slice());
+    ctap2_request.calculate_and_set_uv_auth(&uv_proto, uv_auth_token.as_slice());
 
     Ok(())
 }
