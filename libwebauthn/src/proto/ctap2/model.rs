@@ -644,26 +644,32 @@ impl Ctap2GetInfoResponse {
             (self.option_enabled("pinUvAuthToken") && self.option_enabled("uv"))
     }
 
-    pub fn uv_operation(&self) -> Ctap2UserVerificationOperation {
-        if self.option_enabled("uv") {
+    pub fn uv_operation(&self, uv_blocked: bool) -> Option<Ctap2UserVerificationOperation> {
+        if self.option_enabled("uv") && !uv_blocked {
             if self.option_enabled("pinUvAuthToken") {
                 debug!("getPinUvAuthTokenUsingUvWithPermissions");
-                return Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingUvWithPermissions;
+                return Some(
+                    Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingUvWithPermissions,
+                );
             } else {
                 debug!("Deprecated FIDO 2.0 behaviour: populating 'uv' flag");
-                return Ctap2UserVerificationOperation::None;
+                return Some(Ctap2UserVerificationOperation::None);
             }
         } else {
             // !uv
             if self.option_enabled("pinUvAuthToken") {
                 assert!(self.option_enabled("clientPin"));
                 debug!("getPinUvAuthTokenUsingPinWithPermissions");
-                return Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingPinWithPermissions;
-            } else {
+                return Some(
+                    Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingPinWithPermissions,
+                );
+            } else if self.option_enabled("clientPin") {
                 // !pinUvAuthToken
-                assert!(self.option_enabled("clientPin"));
                 debug!("getPinToken");
-                return Ctap2UserVerificationOperation::GetPinToken;
+                return Some(Ctap2UserVerificationOperation::GetPinToken);
+            } else {
+                debug!("No UV and no PIN (e.g. maybe UV was blocked and no PIN available)");
+                return None;
             }
         }
     }
