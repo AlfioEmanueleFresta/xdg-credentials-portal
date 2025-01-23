@@ -11,7 +11,10 @@ use crate::proto::{
     ctap2::cbor::{CborRequest, CborResponse},
 };
 use crate::transport::error::{Error, TransportError};
-use crate::transport::{channel::ChannelStatus, device::SupportedProtocols, Channel};
+use crate::transport::{
+    channel::ChannelStatus, device::SupportedProtocols, Channel, Ctap2AuthTokenIdentifier,
+    Ctap2AuthTokenStore,
+};
 
 use super::known_devices::CableKnownDevice;
 use super::qr_code_device::CableQrCodeDevice;
@@ -84,4 +87,19 @@ impl<'d> Channel for CableChannel<'d> {
             .await
             .ok_or(Error::Transport(TransportError::TransportUnavailable))
     }
+}
+
+impl<'d> Ctap2AuthTokenStore for CableChannel<'d> {
+    fn store_uv_auth_token(
+        &mut self,
+        _identifier: Ctap2AuthTokenIdentifier,
+        _pin_uv_auth_token: &[u8],
+    ) {
+    }
+
+    fn get_uv_auth_token(&self, _identifier: &Ctap2AuthTokenIdentifier) -> Option<&[u8]> {
+        None
+    }
+
+    fn clear_uv_auth_token_store(&mut self) {}
 }
