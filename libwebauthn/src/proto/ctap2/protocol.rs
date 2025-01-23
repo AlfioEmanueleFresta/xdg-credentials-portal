@@ -97,6 +97,10 @@ where
         trace!(?request);
         self.cbor_send(&request.into(), TIMEOUT_GET_INFO).await?;
         let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
+        match cbor_response.status_code {
+            CtapError::Ok => (),
+            error => return Err(Error::Ctap(error)),
+        };
         let ctap_response: Ctap2GetAssertionResponse =
             from_slice(&cbor_response.data.unwrap()).unwrap();
         debug!("CTAP2 GetAssertion successful");

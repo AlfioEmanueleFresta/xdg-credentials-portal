@@ -881,6 +881,7 @@ impl Ctap2ClientPinRequest {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ClientPinRequestPermissions: u32 {
         const MAKE_CREDENTIAL = 0x01;
         const GET_ASSERTION = 0x02;
@@ -892,7 +893,7 @@ bitflags! {
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
 pub enum Ctap2PinUvAuthProtocol {
     One = 1,
     Two = 2,
