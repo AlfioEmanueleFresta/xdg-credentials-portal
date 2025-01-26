@@ -7,7 +7,7 @@ use p256::{NonZeroScalar, SecretKey};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::Serialize;
-use serde_bytes::ByteBuf;
+use serde_bytes::ByteArray;
 use serde_indexed::SerializeIndexed;
 use tokio::time::sleep;
 use tracing::{debug, error, instrument, trace};
@@ -49,9 +49,9 @@ impl Serialize for QrCodeOperationHint {
 #[derive(Debug, SerializeIndexed)]
 pub struct CableQrCode {
     // Key 0: a 33-byte, P-256, X9.62, compressed public key.
-    pub public_key: ByteBuf,
+    pub public_key: ByteArray<33>,
     // Key 1: a 16-byte random QR secret.
-    pub qr_secret: ByteBuf,
+    pub qr_secret: ByteArray<16>,
     /// Key 2: the number of assigned tunnel server domains known to this implementation.
     pub known_tunnel_domains_count: u8,
     /// Key 3: (optional) the current time in epoch seconds.
@@ -144,7 +144,13 @@ impl<'d> CableQrCodeDevice<'d> {
     ) -> Self {
         let private_key_scalar = NonZeroScalar::random(&mut OsRng);
         let private_key = SecretKey::from_bytes(&private_key_scalar.to_bytes()).unwrap();
-        let public_key = private_key.public_key().as_affine().to_encoded_point(true);
+        let public_key: [u8; 33] = private_key
+            .public_key()
+            .as_affine()
+            .to_encoded_point(true)
+            .as_bytes()
+            .try_into()
+            .unwrap();
         let mut qr_secret = [0u8; 16];
         OsRng::default().fill_bytes(&mut qr_secret);
 
@@ -155,8 +161,8 @@ impl<'d> CableQrCodeDevice<'d> {
 
         Self {
             qr_code: CableQrCode {
-                public_key: ByteBuf::from(public_key.as_bytes()),
-                qr_secret: ByteBuf::from(qr_secret),
+                public_key: ByteArray::from(public_key),
+                qr_secret: ByteArray::from(qr_secret),
                 known_tunnel_domains_count: KNOWN_TUNNEL_DOMAINS.len() as u8,
                 current_time: current_unix_time,
                 operation_hint: hint,
@@ -251,11 +257,11 @@ impl<'d> Device<'d, Cable, CableChannel<'d>> for CableQrCodeDevice<'_> {
         let routing_id_str = hex::encode(&advert.routing_id);
         let _nonce_str = hex::encode(&advert.nonce);
 
-        let tunnel_id = &derive(&self.qr_code.qr_secret, None, KeyPurpose::TunnelID)[..16];
+        let tunnel_id = &derive(&self.qr_code.qr_secret.as_ref(), None, KeyPurpose::TunnelID)[..16];
         let tunnel_id_str = hex::encode(&tunnel_id);
 
         let psk: &[u8; 32] = &derive(
-            &self.qr_code.qr_secret,
+            &self.qr_code.qr_secret.as_ref(),
             Some(&advert.plaintext),
             KeyPurpose::PSK,
         )[..32]

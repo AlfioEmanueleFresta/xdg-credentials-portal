@@ -14,7 +14,10 @@ impl CborResponse {
     pub fn new_success_from_slice(slice: &[u8]) -> Self {
         Self {
             status_code: CtapError::Ok,
-            data: Some(slice.to_vec()),
+            data: match slice.len() {
+                0 => None,
+                _ => Some(Vec::from(slice)),
+            },
         }
     }
 }

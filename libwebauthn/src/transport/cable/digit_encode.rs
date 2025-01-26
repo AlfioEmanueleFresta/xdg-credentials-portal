@@ -19,7 +19,7 @@ pub fn digit_encode(input: &[u8]) -> String {
         input = &input[CHUNK_SIZE..];
     }
     if !input.is_empty() {
-        let digits = 15 & (PARTIAL_CHUNK_DIGITS >> (4 * input.len()));
+        let digits = 0x0F & (PARTIAL_CHUNK_DIGITS >> (4 * input.len()));
         let mut chunk = [0u8; 8];
         chunk[..input.len()].copy_from_slice(input);
         let v = u64::from_le_bytes(chunk);

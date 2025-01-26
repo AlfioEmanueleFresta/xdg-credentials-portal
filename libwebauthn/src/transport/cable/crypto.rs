@@ -13,7 +13,7 @@ pub enum KeyPurpose {
 }
 
 
-pub fn derive(secret: &[u8], salt: Option<&[u8]>, purpose: KeyPurpose) -> Vec<u8> {
+pub fn derive(secret: &[u8; 16], salt: Option<&[u8]>, purpose: KeyPurpose) -> Vec<u8> {
     let mut purpose32 = [0u8; 4];
     purpose32[0] = purpose as u8;
 
@@ -31,6 +31,11 @@ fn reserved_bits_are_zero(plaintext: &[u8]) -> bool {
 pub fn trial_decrypt_advert(eid_key: &[u8], candidate_advert: &[u8]) -> Option<Vec<u8>> {
     if candidate_advert.len() != 20 {
         warn!("candidate advert is not 20 bytes");
+        return None;
+    }
+
+    if eid_key.len() != 64 {
+        warn!("EID key is not 64 bytes");
         return None;
     }
 
