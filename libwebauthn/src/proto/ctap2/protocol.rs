@@ -11,8 +11,9 @@ use crate::transport::Channel;
 
 use super::model::Ctap2ClientPinResponse;
 use super::{
-    Ctap2ClientPinRequest, Ctap2GetAssertionRequest, Ctap2GetAssertionResponse,
-    Ctap2GetInfoResponse, Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse,
+    Ctap2AuthenticatorConfigRequest, Ctap2ClientPinRequest, Ctap2GetAssertionRequest,
+    Ctap2GetAssertionResponse, Ctap2GetInfoResponse, Ctap2MakeCredentialRequest,
+    Ctap2MakeCredentialResponse,
 };
 
 const TIMEOUT_GET_INFO: Duration = Duration::from_millis(250);
@@ -40,6 +41,11 @@ pub trait Ctap2 {
         timeout: Duration,
     ) -> Result<Ctap2GetAssertionResponse, Error>;
     async fn ctap2_selection(&mut self, timeout: Duration) -> Result<(), Error>;
+    async fn ctap2_authenticator_config(
+        &mut self,
+        request: &Ctap2AuthenticatorConfigRequest,
+        timeout: Duration,
+    ) -> Result<(), Error>;
 }
 
 #[async_trait]
@@ -147,10 +153,39 @@ where
             CtapError::Ok => (),
             error => return Err(Error::Ctap(error)),
         };
-        let ctap_response: Ctap2ClientPinResponse =
-            from_slice(&cbor_response.data.unwrap()).unwrap();
-        debug!("CTAP2 ClientPin successful");
-        trace!(?ctap_response);
-        Ok(ctap_response)
+        if let Some(data) = cbor_response.data {
+            let ctap_response: Ctap2ClientPinResponse = from_slice(&data).unwrap();
+            debug!("CTAP2 ClientPin successful");
+            trace!(?ctap_response);
+            Ok(ctap_response)
+        } else {
+            // Seems like a bug in serde_indexed: https://github.com/trussed-dev/serde-indexed/issues/10
+            // Can't deserialize an empty vec[], even though everything is optional and marked as default.
+            // So we work around it here by creating our own default value.
+            Ok(Ctap2ClientPinResponse::default())
+        }
+    }
+
+    #[instrument(skip_all)]
+    async fn ctap2_authenticator_config(
+        &mut self,
+        request: &Ctap2AuthenticatorConfigRequest,
+        _timeout: Duration,
+    ) -> Result<(), Error> {
+        trace!(?request);
+        self.cbor_send(&request.into(), TIMEOUT_GET_INFO).await?;
+        let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
+        match cbor_response.status_code {
+            CtapError::Ok => {
+                return Ok(());
+            }
+            error => {
+                warn!(
+                    ?error,
+                    "Authenticator config request failed with status code"
+                );
+                return Err(Error::Ctap(error));
+            }
+        }
     }
 }

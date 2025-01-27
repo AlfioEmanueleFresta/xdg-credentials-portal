@@ -1,4 +1,5 @@
 pub mod fido;
+pub mod management;
 pub mod ops;
 pub mod pin;
 pub mod proto;
