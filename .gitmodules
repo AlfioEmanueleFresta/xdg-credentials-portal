@@ -4,3 +4,6 @@
 [submodule "ctap-types"]
 	path = ctap-types
 	url = https://github.com/AlfioEmanueleFresta/ctap-types.git
+[submodule "snow"]
+	path = snow
+	url = https://github.com/AlfioEmanueleFresta/snow.git

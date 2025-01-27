@@ -18,19 +18,6 @@ where
     async fn supported_protocols(&mut self) -> Result<SupportedProtocols, Error>;
 }
 
-/*
-pub struct BleDevice {}
-
-impl<C> Device<Ble, C> for BleDevice
-where
-    C: Channel,
-{
-    fn channel(&self) -> C {
-        todo!()
-    }
-}
-*/
-
 #[derive(Debug, Copy, Clone, Default)]
 pub struct SupportedProtocols {
     pub u2f: bool, // Can be split into U2F revisions, if needed.

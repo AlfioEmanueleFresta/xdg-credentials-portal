@@ -1,9 +1,25 @@
+use std::hash::Hash;
+
 #[derive(Debug, Clone)]
 pub struct FidoDevice {
     pub path: String,
     pub alias: String,
     pub is_paired: bool,
     pub is_connected: bool,
+}
+
+impl PartialEq for FidoDevice {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
+    }
+}
+
+impl Eq for FidoDevice {}
+
+impl Hash for FidoDevice {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.path.hash(state);
+    }
 }
 
 impl FidoDevice {

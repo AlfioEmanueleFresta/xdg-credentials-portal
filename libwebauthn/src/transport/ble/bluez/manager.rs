@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Cursor as IOCursor;
 use std::thread::sleep;
 use std::time::Duration;
@@ -62,11 +63,12 @@ impl SupportedRevisions {
     }
 }
 
-pub async fn start_discovery() -> Result<(), Error> {
+pub async fn start_discovery(uuids: &Vec<String>) -> Result<(), Error> {
     let span = span!(Level::INFO, "start_discovery");
+    let uuids = uuids.to_owned();
     tokio::task::spawn_blocking(move || {
         let _enter = span.enter();
-        start_discovery_blocking()
+        start_discovery_blocking(&uuids)
     })
     .await
     .unwrap()
@@ -138,7 +140,7 @@ pub fn notify_stop(connection: &Connection) -> Result<(), Error> {
     notify_stop_blocking(connection)
 }
 
-fn start_discovery_blocking() -> Result<(), Error> {
+fn start_discovery_blocking(uuids: &Vec<String>) -> Result<(), Error> {
     let session = BluetoothSession::create_session(None).or(Err(Error::Unavailable))?;
     let adapter = BluetoothAdapter::init(&session).or(Err(Error::Unavailable))?;
     if !adapter.is_powered().unwrap() {
@@ -147,7 +149,7 @@ fn start_discovery_blocking() -> Result<(), Error> {
     let discovery_session =
         BluetoothDiscoverySession::create_session(&session, adapter.get_id()).unwrap();
     discovery_session
-        .set_discovery_filter(vec![FIDO_PROFILE_UUID.into()], None, None)
+        .set_discovery_filter(uuids.to_owned(), None, None)
         .unwrap();
     discovery_session
         .start_discovery()
@@ -448,4 +450,53 @@ fn receive_fragments(
         .map(move |e| Vec::from(e))
         .collect();
     fragments
+}
+
+/// Finds all devices that advertise a given service UUID, and returns a map of device to service data.
+#[instrument(level = Level::DEBUG, skip_all)]
+fn devices_by_service_blocking(uuid: &str) -> Result<HashMap<Device, Vec<u8>>, Error> {
+    let session = BluetoothSession::create_session(None).or(Err(Error::Unavailable))?;
+    let adapter = BluetoothAdapter::init(&session).or(Err(Error::Unavailable))?;
+    let devices = adapter
+        .get_device_list()
+        .or(Err(Error::Unavailable))?
+        .iter()
+        .map(|device_path| BluetoothDevice::new(&session, device_path.into()))
+        .map(|device| (device.clone(), device.get_service_data()))
+        .filter_map(|(device, service_data)| match service_data {
+            Ok(data) => {
+                let services = device.get_gatt_services().unwrap();
+                debug!(?device, ?data, ?services, "Found device with service data");
+                if let Some(data) = data.get(uuid) {
+                    Some((device, data.clone()))
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        })
+        .map(|(device, data)| {
+            (
+                Device::new(
+                    &device.get_id(),
+                    &device.get_alias().unwrap(),
+                    device.is_paired().unwrap(),
+                    device.is_connected().unwrap(),
+                ),
+                data,
+            )
+        })
+        .collect();
+    Ok(devices)
+}
+
+pub async fn devices_by_service(uuid: &str) -> Result<HashMap<Device, Vec<u8>>, Error> {
+    let span = span!(Level::DEBUG, "devices_by_service");
+    let uuid = uuid.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let _enter = span.enter();
+        devices_by_service_blocking(&uuid)
+    })
+    .await
+    .unwrap()
 }

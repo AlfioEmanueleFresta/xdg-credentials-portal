@@ -4,10 +4,22 @@ use std::convert::{TryFrom, TryInto};
 use std::io::{Error as IOError, ErrorKind as IOErrorKind};
 use tracing::error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CborResponse {
     pub status_code: CtapError,
     pub data: Option<Vec<u8>>,
+}
+
+impl CborResponse {
+    pub fn new_success_from_slice(slice: &[u8]) -> Self {
+        Self {
+            status_code: CtapError::Ok,
+            data: match slice.len() {
+                0 => None,
+                _ => Some(Vec::from(slice)),
+            },
+        }
+    }
 }
 
 impl TryFrom<&Vec<u8>> for CborResponse {

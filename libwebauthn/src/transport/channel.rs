@@ -22,11 +22,11 @@ pub enum ChannelStatus {
 pub trait Channel: Send + Sync + Display {
     async fn supported_protocols(&self) -> Result<SupportedProtocols, Error>;
     async fn status(&self) -> ChannelStatus;
-    async fn close(&self);
+    async fn close(&mut self);
 
     async fn apdu_send(&self, request: &ApduRequest, timeout: Duration) -> Result<(), Error>;
     async fn apdu_recv(&self, timeout: Duration) -> Result<ApduResponse, Error>;
 
-    async fn cbor_send(&self, request: &CborRequest, timeout: Duration) -> Result<(), Error>;
-    async fn cbor_recv(&self, timeout: Duration) -> Result<CborResponse, Error>;
+    async fn cbor_send(&mut self, request: &CborRequest, timeout: Duration) -> Result<(), Error>;
+    async fn cbor_recv(&mut self, timeout: Duration) -> Result<CborResponse, Error>;
 }

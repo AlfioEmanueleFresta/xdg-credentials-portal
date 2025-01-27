@@ -1,12 +1,12 @@
 use std::time::Duration;
 
 use byteorder::{BigEndian, WriteBytesExt};
+use ctap_types::cose;
 use serde_bytes::ByteBuf;
 use serde_cbor::to_vec;
 use sha2::{Digest, Sha256};
 use tracing::{error, trace};
 use x509_parser::nom::AsBytes;
-use ctap_types::cose;
 
 use super::webauthn::MakeCredentialRequest;
 use crate::ops::webauthn::{GetAssertionResponse, MakeCredentialResponse};
@@ -70,14 +70,14 @@ impl UpgradableResponse<MakeCredentialResponse, MakeCredentialRequest> for Regis
                 .expect("Not the identity point")
                 .as_bytes(),
         )
-            .unwrap();
+        .unwrap();
         let y: heapless::Vec<u8, 32> = heapless::Vec::from_slice(
             encoded_point
                 .y()
                 .expect("Not identity nor compressed")
                 .as_bytes(),
         )
-            .unwrap();
+        .unwrap();
         let cose_public_key = cose::PublicKey::P256Key(cose::P256PublicKey {
             x: x.into(),
             y: y.into(),
@@ -148,6 +148,9 @@ impl UpgradableResponse<MakeCredentialResponse, MakeCredentialRequest> for Regis
             format: String::from("fido-u2f"),
             authenticator_data: ByteBuf::from(auth_data),
             attestation_statement: attestation_statement,
+            enterprise_attestation: None,
+            large_blob_key: None,
+            unsigned_extension_output: None,
         })
     }
 }
@@ -161,7 +164,7 @@ impl UpgradableResponse<GetAssertionResponse, SignRequest> for SignResponse {
         // See also Authenticator Data section of [WebAuthn].
         let mut flags: u8 = 0;
         flags |= 0b00000001; // up always set
-        // bit 1 is unused, ignoring
+                             // bit 1 is unused, ignoring
 
         // Let signCount be a 4-byte unsigned integer initialized with CTAP1/U2F response counter field.
         let sign_count = self.counter;
@@ -189,8 +192,12 @@ impl UpgradableResponse<GetAssertionResponse, SignRequest> for SignResponse {
             user: None,
             credentials_count: None,
             user_selected: None,
+            large_blob_key: None,
+            unsigned_extension_outputs: None,
+            enterprise_attestation: None,
+            attestation_statement: None,
         }
-            .into();
+        .into();
 
         trace!(?upgraded_response);
         Ok(upgraded_response)

@@ -62,6 +62,12 @@ impl From<TransportError> for Error {
     }
 }
 
+impl From<snow::Error> for Error {
+    fn from(_error: snow::Error) -> Self {
+        Error::Transport(TransportError::NegotiationFailed)
+    }
+}
+
 impl From<PlatformError> for Error {
     fn from(error: PlatformError) -> Self {
         Error::Platform(error)
