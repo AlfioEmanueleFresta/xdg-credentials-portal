@@ -65,7 +65,7 @@ mod tests {
     
     #[test]
     fn derive_eidkey_nosalt() {
-        let input = hex::decode("00112233445566778899aabbccddeeff").unwrap();
+        let input: [u8; 16] = hex::decode("00112233445566778899aabbccddeeff").unwrap().try_into().unwrap();
         let output = derive(&input, None, KeyPurpose::EIDKey);
         let expected = hex::decode("efafab5b2c84a11c80e3ad0770353138b414a859ccd3afcc99e3d3250dba65084ede8e38e75432617c0ccae1ffe5d8143df0db0cd6d296f489419cd6411ee505").unwrap();
         assert_eq!(output, expected);
@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn derive_eidkey_salt() {
-        let input = hex::decode("00112233445566778899aabbccddeeff").unwrap();
+        let input: [u8; 16] = hex::decode("00112233445566778899aabbccddeeff").unwrap().try_into().unwrap();
         let salt = hex::decode("ffeeddccbbaa998877665544332211").unwrap();
         let output = derive(&input, Some(&salt), KeyPurpose::EIDKey);
         let expected = hex::decode("168cf3dd220a7907f8bac30f559be92a3b6d937fe5594beeaf1e50e35976b7d654dd550e22ae4c801b9d1cdbf0d2b1472daa1328661eb889acae3023b7ffa509").unwrap();
