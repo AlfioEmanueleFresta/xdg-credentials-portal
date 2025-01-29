@@ -20,7 +20,7 @@ use crate::proto::ctap2::{
     Ctap2MakeCredentialRequest, Ctap2UserVerifiableRequest, Ctap2UserVerificationOperation,
 };
 pub use crate::transport::error::{CtapError, Error, PlatformError, TransportError};
-use crate::transport::{Channel, Ctap2AuthTokenIdentifier};
+use crate::transport::{Channel, Ctap2AuthTokenPermission};
 
 macro_rules! handle_errors {
     ($channel: expr, $resp: expr, $uv_auth_used: expr) => {
@@ -264,7 +264,7 @@ where
 {
     let get_info_response = channel.ctap2_get_info().await?;
     let uv_proto = select_uv_proto(&get_info_response).await?;
-    let token_identifier = Ctap2AuthTokenIdentifier::new(
+    let token_identifier = Ctap2AuthTokenPermission::new(
         uv_proto.version(),
         ctap2_request.permissions(),
         ctap2_request.permissions_rpid(),
@@ -406,7 +406,7 @@ where
 
     let uv_auth_token = uv_proto.decrypt(&shared_secret, &encrypted_pin_uv_auth_token)?;
 
-    let token_identifier = Ctap2AuthTokenIdentifier::new(
+    let token_identifier = Ctap2AuthTokenPermission::new(
         uv_proto.version(),
         ctap2_request.permissions(),
         ctap2_request.permissions_rpid(),

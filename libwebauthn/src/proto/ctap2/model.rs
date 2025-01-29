@@ -478,7 +478,7 @@ pub trait Ctap2UserVerifiableRequest {
         uv_auth_token: &[u8],
     );
     fn client_data_hash(&self) -> &[u8];
-    fn permissions(&self) -> ClientPinRequestPermissions;
+    fn permissions(&self) -> Ctap2AuthTokenPermissionRole;
     fn permissions_rpid(&self) -> Option<&str>;
 }
 
@@ -506,10 +506,10 @@ impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
         self.hash.as_slice()
     }
 
-    fn permissions(&self) -> ClientPinRequestPermissions {
+    fn permissions(&self) -> Ctap2AuthTokenPermissionRole {
         // GET_ASSERTION needed for pre-flight requests
-        return ClientPinRequestPermissions::MAKE_CREDENTIAL
-            | ClientPinRequestPermissions::GET_ASSERTION;
+        return Ctap2AuthTokenPermissionRole::MAKE_CREDENTIAL
+            | Ctap2AuthTokenPermissionRole::GET_ASSERTION;
     }
 
     fn permissions_rpid(&self) -> Option<&str> {
@@ -539,8 +539,8 @@ impl Ctap2UserVerifiableRequest for Ctap2GetAssertionRequest {
         self.client_data_hash.as_slice()
     }
 
-    fn permissions(&self) -> ClientPinRequestPermissions {
-        return ClientPinRequestPermissions::GET_ASSERTION;
+    fn permissions(&self) -> Ctap2AuthTokenPermissionRole {
+        return Ctap2AuthTokenPermissionRole::GET_ASSERTION;
     }
 
     fn permissions_rpid(&self) -> Option<&str> {
@@ -801,7 +801,7 @@ impl Ctap2ClientPinRequest {
         protocol: Ctap2PinUvAuthProtocol,
         public_key: PublicKey,
         pin_hash_enc: &[u8],
-        permissions: ClientPinRequestPermissions,
+        permissions: Ctap2AuthTokenPermissionRole,
         permissions_rpid: Option<&str>,
     ) -> Self {
         Self {
@@ -821,7 +821,7 @@ impl Ctap2ClientPinRequest {
     pub fn new_get_uv_token_with_perm(
         protocol: Ctap2PinUvAuthProtocol,
         public_key: PublicKey,
-        permissions: ClientPinRequestPermissions,
+        permissions: Ctap2AuthTokenPermissionRole,
         permissions_rpid: Option<&str>,
     ) -> Self {
         Self {
@@ -882,7 +882,7 @@ impl Ctap2ClientPinRequest {
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct ClientPinRequestPermissions: u32 {
+    pub struct Ctap2AuthTokenPermissionRole: u32 {
         const MAKE_CREDENTIAL = 0x01;
         const GET_ASSERTION = 0x02;
         const CREDENTIAL_MANAGEMENT = 0x04;

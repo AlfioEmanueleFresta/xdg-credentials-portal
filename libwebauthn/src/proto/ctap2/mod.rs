@@ -7,7 +7,7 @@ mod protocol;
 
 pub use model::Ctap2GetInfoResponse;
 pub use model::{
-    ClientPinRequestPermissions, Ctap2AttestationStatement, Ctap2COSEAlgorithmIdentifier,
+    Ctap2AuthTokenPermissionRole, Ctap2AttestationStatement, Ctap2COSEAlgorithmIdentifier,
     Ctap2ClientPinRequest, Ctap2CommandCode, Ctap2CredentialType, Ctap2MakeCredentialOptions,
     Ctap2PinUvAuthProtocol, Ctap2PublicKeyCredentialDescriptor, Ctap2PublicKeyCredentialRpEntity,
     Ctap2PublicKeyCredentialType, Ctap2PublicKeyCredentialUserEntity, Ctap2Transport,

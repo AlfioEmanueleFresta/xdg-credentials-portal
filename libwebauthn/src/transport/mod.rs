@@ -8,7 +8,7 @@ pub mod hid;
 mod channel;
 mod transport;
 
-pub(crate) use channel::Ctap2AuthTokenIdentifier;
+pub(crate) use channel::Ctap2AuthTokenPermission;
 pub use channel::{Channel, Ctap2AuthTokenStore};
 pub use device::Device;
 pub use transport::Transport;

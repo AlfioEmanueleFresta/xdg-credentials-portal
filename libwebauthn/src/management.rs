@@ -11,7 +11,7 @@ use crate::webauthn::{user_verification, UsedPinUvAuthToken};
 use crate::{
     ops::webauthn::UserVerificationRequirement,
     proto::ctap2::{
-        ClientPinRequestPermissions, Ctap2, Ctap2AuthenticatorConfigRequest,
+        Ctap2, Ctap2AuthTokenPermissionRole, Ctap2AuthenticatorConfigRequest,
         Ctap2UserVerifiableRequest,
     },
 };
@@ -214,8 +214,8 @@ impl Ctap2UserVerifiableRequest for Ctap2AuthenticatorConfigRequest {
         unreachable!()
     }
 
-    fn permissions(&self) -> ClientPinRequestPermissions {
-        return ClientPinRequestPermissions::AUTHENTICATOR_CONFIGURATION;
+    fn permissions(&self) -> Ctap2AuthTokenPermissionRole {
+        return Ctap2AuthTokenPermissionRole::AUTHENTICATOR_CONFIGURATION;
     }
 
     fn permissions_rpid(&self) -> Option<&str> {

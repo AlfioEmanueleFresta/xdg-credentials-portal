@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display};
 use std::time::Duration;
 
-use crate::proto::ctap2::{ClientPinRequestPermissions, Ctap2PinUvAuthProtocol};
+use crate::proto::ctap2::{Ctap2AuthTokenPermissionRole, Ctap2PinUvAuthProtocol};
 use crate::proto::{
     ctap1::apdu::{ApduRequest, ApduResponse},
     ctap2::cbor::{CborRequest, CborResponse},
@@ -33,33 +33,33 @@ pub trait Channel: Send + Sync + Display + Ctap2AuthTokenStore {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ctap2AuthTokenIdentifier {
+pub struct Ctap2AuthTokenPermission {
     pin_uv_auth_protocol: Ctap2PinUvAuthProtocol,
-    permissions: ClientPinRequestPermissions,
-    permissions_rpid: Option<String>,
+    role: Ctap2AuthTokenPermissionRole,
+    rpid: Option<String>,
 }
 
-impl Ctap2AuthTokenIdentifier {
+impl Ctap2AuthTokenPermission {
     pub fn new(
         pin_uv_auth_protocol: Ctap2PinUvAuthProtocol,
-        permissions: ClientPinRequestPermissions,
+        permissions: Ctap2AuthTokenPermissionRole,
         permissions_rpid: Option<&str>,
     ) -> Self {
         Self {
             pin_uv_auth_protocol,
-            permissions,
-            permissions_rpid: permissions_rpid.map(str::to_string),
+            role: permissions,
+            rpid: permissions_rpid.map(str::to_string),
         }
     }
 
-    pub fn is_satisfied_by(&self, other: &Ctap2AuthTokenIdentifier) -> bool {
-        if self.pin_uv_auth_protocol != other.pin_uv_auth_protocol {
+    pub fn contains(&self, requested: &Ctap2AuthTokenPermission) -> bool {
+        if self.pin_uv_auth_protocol != requested.pin_uv_auth_protocol {
             return false;
         }
-        if self.permissions_rpid != other.permissions_rpid {
+        if self.rpid != requested.rpid {
             return false;
         }
-        self.permissions.contains(other.permissions)
+        self.role.contains(requested.role)
     }
 }
 
@@ -67,9 +67,9 @@ impl Ctap2AuthTokenIdentifier {
 pub trait Ctap2AuthTokenStore {
     fn store_uv_auth_token(
         &mut self,
-        identifier: Ctap2AuthTokenIdentifier,
+        permission: Ctap2AuthTokenPermission,
         pin_uv_auth_token: &[u8],
     );
-    fn get_uv_auth_token(&self, identifier: &Ctap2AuthTokenIdentifier) -> Option<&[u8]>;
+    fn get_uv_auth_token(&self, requested_permission: &Ctap2AuthTokenPermission) -> Option<&[u8]>;
     fn clear_uv_auth_token_store(&mut self);
 }

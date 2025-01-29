@@ -12,7 +12,7 @@ use crate::proto::{
 };
 use crate::transport::error::{Error, TransportError};
 use crate::transport::{
-    channel::ChannelStatus, device::SupportedProtocols, Channel, Ctap2AuthTokenIdentifier,
+    channel::ChannelStatus, device::SupportedProtocols, Channel, Ctap2AuthTokenPermission,
     Ctap2AuthTokenStore,
 };
 
@@ -92,12 +92,12 @@ impl<'d> Channel for CableChannel<'d> {
 impl<'d> Ctap2AuthTokenStore for CableChannel<'d> {
     fn store_uv_auth_token(
         &mut self,
-        _identifier: Ctap2AuthTokenIdentifier,
+        _permission: Ctap2AuthTokenPermission,
         _pin_uv_auth_token: &[u8],
     ) {
     }
 
-    fn get_uv_auth_token(&self, _identifier: &Ctap2AuthTokenIdentifier) -> Option<&[u8]> {
+    fn get_uv_auth_token(&self, _requested_permission: &Ctap2AuthTokenPermission) -> Option<&[u8]> {
         None
     }
 
