@@ -18,7 +18,7 @@ use tokio::net::UdpSocket;
 use crate::proto::ctap1::apdu::{ApduRequest, ApduResponse};
 use crate::proto::ctap2::cbor::{CborRequest, CborResponse};
 use crate::transport::channel::{
-    Channel, ChannelStatus, Ctap2AuthTokenIdentifier, Ctap2AuthTokenStore,
+    Channel, ChannelStatus, Ctap2AuthTokenPermission, Ctap2AuthTokenStore,
 };
 use crate::transport::device::SupportedProtocols;
 use crate::transport::error::{Error, TransportError};
@@ -52,7 +52,7 @@ pub struct HidChannel<'d> {
     device: &'d HidDevice,
     open_device: OpenHidDevice,
     init: InitResponse,
-    auth_token_storage: Option<(Ctap2AuthTokenIdentifier, Vec<u8>)>,
+    auth_token: Option<(Ctap2AuthTokenPermission, Vec<u8>)>,
 }
 
 impl<'d> HidChannel<'d> {
@@ -69,7 +69,7 @@ impl<'d> HidChannel<'d> {
                 HidBackendDevice::VirtualDevice(_) => OpenHidDevice::VirtualDevice,
             },
             init: InitResponse::default(),
-            auth_token_storage: None,
+            auth_token: None,
         };
         channel.init = channel.init(INIT_TIMEOUT).await?;
         Ok(channel)
@@ -451,22 +451,22 @@ bitflags! {
 impl Ctap2AuthTokenStore for HidChannel<'_> {
     fn store_uv_auth_token(
         &mut self,
-        identifier: Ctap2AuthTokenIdentifier,
+        permission: Ctap2AuthTokenPermission,
         pin_uv_auth_token: &[u8],
     ) {
-        self.auth_token_storage = Some((identifier, pin_uv_auth_token.to_vec()));
+        self.auth_token = Some((permission, pin_uv_auth_token.to_vec()));
     }
 
-    fn get_uv_auth_token(&self, identifier: &Ctap2AuthTokenIdentifier) -> Option<&[u8]> {
-        if let Some((id, token)) = &self.auth_token_storage {
-            if id.is_satisfied_by(identifier) {
-                return Some(token);
+    fn get_uv_auth_token(&self, requested_permission: &Ctap2AuthTokenPermission) -> Option<&[u8]> {
+        if let Some((stored_permission, stored_token)) = &self.auth_token {
+            if stored_permission.contains(requested_permission) {
+                return Some(stored_token);
             }
         }
         None
     }
 
     fn clear_uv_auth_token_store(&mut self) {
-        self.auth_token_storage = None;
+        self.auth_token = None;
     }
 }
