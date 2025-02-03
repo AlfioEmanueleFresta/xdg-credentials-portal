@@ -20,7 +20,25 @@ use crate::proto::ctap2::{
     Ctap2MakeCredentialRequest, Ctap2UserVerifiableRequest, Ctap2UserVerificationOperation,
 };
 pub use crate::transport::error::{CtapError, Error, PlatformError, TransportError};
-use crate::transport::Channel;
+use crate::transport::{Channel, Ctap2AuthTokenPermission};
+
+macro_rules! handle_errors {
+    ($channel: expr, $resp: expr, $uv_auth_used: expr) => {
+        match $resp {
+            Err(Error::Ctap(CtapError::PINAuthInvalid))
+                if $uv_auth_used == UsedPinUvAuthToken::FromStorage =>
+            {
+                info!("PINAuthInvalid: Clearing auth token storage and trying again.");
+                $channel.clear_uv_auth_token_store();
+                continue;
+            }
+            x => {
+                break x;
+            }
+        }
+    };
+}
+pub(crate) use handle_errors;
 
 #[async_trait]
 pub trait WebAuthn {
@@ -96,15 +114,21 @@ where
         pin_provider: &Box<dyn PinProvider>,
     ) -> Result<MakeCredentialResponse, Error> {
         let mut ctap2_request: Ctap2MakeCredentialRequest = op.into();
-        user_verification(
-            self,
-            op.user_verification,
-            &mut ctap2_request,
-            pin_provider,
-            op.timeout,
-        )
-        .await?;
-        self.ctap2_make_credential(&ctap2_request, op.timeout).await
+        loop {
+            let uv_auth_used = user_verification(
+                self,
+                op.user_verification,
+                &mut ctap2_request,
+                pin_provider,
+                op.timeout,
+            )
+            .await?;
+            handle_errors!(
+                self,
+                self.ctap2_make_credential(&ctap2_request, op.timeout).await,
+                uv_auth_used
+            )
+        }
     }
 
     async fn _webauthn_make_credential_u2f(
@@ -137,20 +161,26 @@ where
         pin_provider: &Box<dyn PinProvider>,
     ) -> Result<GetAssertionResponse, Error> {
         let mut ctap2_request: Ctap2GetAssertionRequest = op.into();
-        user_verification(
-            self,
-            op.user_verification,
-            &mut ctap2_request,
-            pin_provider,
-            op.timeout,
-        )
-        .await?;
-
-        let response = self.ctap2_get_assertion(&ctap2_request, op.timeout).await?;
+        let response = loop {
+            let uv_auth_used = user_verification(
+                self,
+                op.user_verification,
+                &mut ctap2_request,
+                pin_provider,
+                op.timeout,
+            )
+            .await?;
+            handle_errors!(
+                self,
+                self.ctap2_get_assertion(&ctap2_request, op.timeout).await,
+                uv_auth_used
+            )
+        }?;
         let count = response.credentials_count.unwrap_or(1);
         let mut assertions = vec![response];
         for i in 1..count {
             debug!({ i }, "Fetching additional credential");
+            // GetNextAssertion doesn't use PinUVAuthToken, so we don't need to check uv_auth_used here
             assertions.push(self.ctap2_get_next_assertion(op.timeout).await?);
         }
         Ok(assertions.as_slice().into())
@@ -212,6 +242,14 @@ where
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum UsedPinUvAuthToken {
+    FromStorage,
+    NewlyCalculated,
+    LegacyUV,
+    None,
+}
+
 #[instrument(skip_all)]
 pub(crate) async fn user_verification<R, C>(
     channel: &mut C,
@@ -219,7 +257,41 @@ pub(crate) async fn user_verification<R, C>(
     ctap2_request: &mut R,
     pin_provider: &Box<dyn PinProvider>,
     timeout: Duration,
-) -> Result<(), Error>
+) -> Result<UsedPinUvAuthToken, Error>
+where
+    C: Channel,
+    R: Ctap2UserVerifiableRequest,
+{
+    let get_info_response = channel.ctap2_get_info().await?;
+    let uv_proto = select_uv_proto(&get_info_response).await?;
+    let token_identifier = Ctap2AuthTokenPermission::new(
+        uv_proto.version(),
+        ctap2_request.permissions(),
+        ctap2_request.permissions_rpid(),
+    );
+    if let Some(uv_auth_token) = channel.get_uv_auth_token(&token_identifier) {
+        ctap2_request.calculate_and_set_uv_auth(&uv_proto, uv_auth_token);
+        Ok(UsedPinUvAuthToken::FromStorage)
+    } else {
+        user_verification_helper(
+            channel,
+            user_verification,
+            ctap2_request,
+            pin_provider,
+            timeout,
+        )
+        .await
+    }
+}
+
+#[instrument(skip_all)]
+async fn user_verification_helper<R, C>(
+    channel: &mut C,
+    user_verification: UserVerificationRequirement,
+    ctap2_request: &mut R,
+    pin_provider: &Box<dyn PinProvider>,
+    timeout: Duration,
+) -> Result<UsedPinUvAuthToken, Error>
 where
     C: Channel,
     R: Ctap2UserVerifiableRequest,
@@ -233,7 +305,7 @@ where
 
     if !uv {
         debug!("User verification not requested by either RP nor authenticator. Ignoring.");
-        return Ok(());
+        return Ok(UsedPinUvAuthToken::None);
     }
 
     if !dev_uv_protected && user_verification.is_required() {
@@ -245,7 +317,7 @@ where
 
     if !dev_uv_protected && user_verification.is_preferred() {
         warn!("User verification is preferred, but not device user verification is not available. Ignoring.");
-        return Ok(());
+        return Ok(UsedPinUvAuthToken::None);
     }
 
     let mut uv_blocked = false;
@@ -260,7 +332,7 @@ where
         if let Ctap2UserVerificationOperation::None = uv_operation {
             debug!("No client operation. Setting deprecated request options.uv flag to true.");
             ctap2_request.ensure_uv_set();
-            return Ok(());
+            return Ok(UsedPinUvAuthToken::LegacyUV);
         }
 
         // For operations that include a PIN, we want to fetch one before obtaining a shared secret.
@@ -334,12 +406,19 @@ where
 
     let uv_auth_token = uv_proto.decrypt(&shared_secret, &encrypted_pin_uv_auth_token)?;
 
+    let token_identifier = Ctap2AuthTokenPermission::new(
+        uv_proto.version(),
+        ctap2_request.permissions(),
+        ctap2_request.permissions_rpid(),
+    );
+    channel.store_uv_auth_token(token_identifier, &uv_auth_token);
+
     // If successful, the platform creates the pinUvAuthParam parameter by calling
     // authenticate(pinUvAuthToken, clientDataHash), and goes to Step 1.1.1.
     // Sets the pinUvAuthProtocol parameter to the value as selected when it obtained the shared secret.
     ctap2_request.calculate_and_set_uv_auth(&uv_proto, uv_auth_token.as_slice());
 
-    Ok(())
+    Ok(UsedPinUvAuthToken::NewlyCalculated)
 }
 
 pub(crate) async fn obtain_shared_secret<C>(

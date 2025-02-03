@@ -1,15 +1,17 @@
 use serde_cbor::ser::to_vec;
 use std::time::Duration;
+use tracing::info;
 
 use crate::pin::{PinProvider, PinUvAuthProtocol};
 use crate::proto::ctap2::Ctap2AuthenticatorConfigCommand;
 pub use crate::transport::error::{CtapError, Error, TransportError};
 use crate::transport::Channel;
-use crate::webauthn::user_verification;
+use crate::webauthn::handle_errors;
+use crate::webauthn::{user_verification, UsedPinUvAuthToken};
 use crate::{
     ops::webauthn::UserVerificationRequirement,
     proto::ctap2::{
-        ClientPinRequestPermissions, Ctap2, Ctap2AuthenticatorConfigRequest,
+        Ctap2, Ctap2AuthTokenPermissionRole, Ctap2AuthenticatorConfigRequest,
         Ctap2UserVerifiableRequest,
     },
 };
@@ -64,17 +66,22 @@ where
     ) -> Result<(), Error> {
         let mut req = Ctap2AuthenticatorConfigRequest::new_toggle_always_uv();
 
-        user_verification(
-            self,
-            UserVerificationRequirement::Required,
-            &mut req,
-            pin_provider,
-            timeout,
-        )
-        .await?;
-
-        // On success, this is an all-empty Ctap2ClientPinResponse
-        self.ctap2_authenticator_config(&req, timeout).await
+        loop {
+            let uv_auth_used = user_verification(
+                self,
+                UserVerificationRequirement::Required,
+                &mut req,
+                pin_provider,
+                timeout,
+            )
+            .await?;
+            // On success, this is an all-empty Ctap2AuthenticatorConfigResponse
+            handle_errors!(
+                self,
+                self.ctap2_authenticator_config(&req, timeout).await,
+                uv_auth_used
+            )
+        }
     }
 
     async fn enable_enterprise_attestation(
@@ -84,17 +91,22 @@ where
     ) -> Result<(), Error> {
         let mut req = Ctap2AuthenticatorConfigRequest::new_enable_enterprise_attestation();
 
-        user_verification(
-            self,
-            UserVerificationRequirement::Required,
-            &mut req,
-            pin_provider,
-            timeout,
-        )
-        .await?;
-
-        // On success, this is an all-empty Ctap2ClientPinResponse
-        self.ctap2_authenticator_config(&req, timeout).await
+        loop {
+            let uv_auth_used = user_verification(
+                self,
+                UserVerificationRequirement::Required,
+                &mut req,
+                pin_provider,
+                timeout,
+            )
+            .await?;
+            // On success, this is an all-empty Ctap2AuthenticatorConfigResponse
+            handle_errors!(
+                self,
+                self.ctap2_authenticator_config(&req, timeout).await,
+                uv_auth_used
+            )
+        }
     }
 
     async fn set_min_pin_length(
@@ -105,17 +117,22 @@ where
     ) -> Result<(), Error> {
         let mut req = Ctap2AuthenticatorConfigRequest::new_set_min_pin_length(new_pin_length);
 
-        user_verification(
-            self,
-            UserVerificationRequirement::Required,
-            &mut req,
-            pin_provider,
-            timeout,
-        )
-        .await?;
-
-        // On success, this is an all-empty Ctap2ClientPinResponse
-        self.ctap2_authenticator_config(&req, timeout).await
+        loop {
+            let uv_auth_used = user_verification(
+                self,
+                UserVerificationRequirement::Required,
+                &mut req,
+                pin_provider,
+                timeout,
+            )
+            .await?;
+            // On success, this is an all-empty Ctap2AuthenticatorConfigResponse
+            handle_errors!(
+                self,
+                self.ctap2_authenticator_config(&req, timeout).await,
+                uv_auth_used
+            )
+        }
     }
 
     async fn force_change_pin(
@@ -126,17 +143,22 @@ where
     ) -> Result<(), Error> {
         let mut req = Ctap2AuthenticatorConfigRequest::new_force_change_pin(force);
 
-        user_verification(
-            self,
-            UserVerificationRequirement::Required,
-            &mut req,
-            pin_provider,
-            timeout,
-        )
-        .await?;
-
-        // On success, this is an all-empty Ctap2ClientPinResponse
-        self.ctap2_authenticator_config(&req, timeout).await
+        loop {
+            let uv_auth_used = user_verification(
+                self,
+                UserVerificationRequirement::Required,
+                &mut req,
+                pin_provider,
+                timeout,
+            )
+            .await?;
+            // On success, this is an all-empty Ctap2AuthenticatorConfigResponse
+            handle_errors!(
+                self,
+                self.ctap2_authenticator_config(&req, timeout).await,
+                uv_auth_used
+            )
+        }
     }
 
     async fn set_min_pin_length_rpids(
@@ -146,18 +168,22 @@ where
         timeout: Duration,
     ) -> Result<(), Error> {
         let mut req = Ctap2AuthenticatorConfigRequest::new_set_min_pin_length_rpids(rpids);
-
-        user_verification(
-            self,
-            UserVerificationRequirement::Required,
-            &mut req,
-            pin_provider,
-            timeout,
-        )
-        .await?;
-
-        // On success, this is an all-empty Ctap2ClientPinResponse
-        self.ctap2_authenticator_config(&req, timeout).await
+        loop {
+            let uv_auth_used = user_verification(
+                self,
+                UserVerificationRequirement::Required,
+                &mut req,
+                pin_provider,
+                timeout,
+            )
+            .await?;
+            // On success, this is an all-empty Ctap2AuthenticatorConfigResponse
+            handle_errors!(
+                self,
+                self.ctap2_authenticator_config(&req, timeout).await,
+                uv_auth_used
+            )
+        }
     }
 }
 
@@ -188,8 +214,8 @@ impl Ctap2UserVerifiableRequest for Ctap2AuthenticatorConfigRequest {
         unreachable!()
     }
 
-    fn permissions(&self) -> ClientPinRequestPermissions {
-        return ClientPinRequestPermissions::AUTHENTICATOR_CONFIGURATION;
+    fn permissions(&self) -> Ctap2AuthTokenPermissionRole {
+        return Ctap2AuthTokenPermissionRole::AUTHENTICATOR_CONFIGURATION;
     }
 
     fn permissions_rpid(&self) -> Option<&str> {
