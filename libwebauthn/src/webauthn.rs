@@ -320,15 +320,19 @@ where
         return Ok(UsedPinUvAuthToken::None);
     }
 
+    let skip_uv = !ctap2_request.can_use_uv(&get_info_response);
+
     let mut uv_blocked = false;
     let (uv_proto, token_response, shared_secret) = loop {
-        let uv_operation = get_info_response.uv_operation(uv_blocked).ok_or_else(|| {
-            if uv_blocked {
-                Error::Ctap(CtapError::UvBlocked)
-            } else {
-                Error::Platform(PlatformError::NoUvAvailable)
-            }
-        })?;
+        let uv_operation = get_info_response
+            .uv_operation(uv_blocked || skip_uv)
+            .ok_or_else(|| {
+                if uv_blocked {
+                    Error::Ctap(CtapError::UvBlocked)
+                } else {
+                    Error::Platform(PlatformError::NoUvAvailable)
+                }
+            })?;
         if let Ctap2UserVerificationOperation::None = uv_operation {
             debug!("No client operation. Setting deprecated request options.uv flag to true.");
             ctap2_request.ensure_uv_set();
