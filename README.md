@@ -9,7 +9,7 @@ The project is composed of multiple crates:
 - **libwebauthn**: Linux native implementation of FIDO2 and FIDO U2F Platform APIs.
   - Fully written in Rust.
   - No longer relies on Mozilla's [authenticator-rs][authenticator-rs].
-  - Supporting multiple transports (currently USB HID and BLE). The library is designed to have pluggable transport implementations, making it easy to add transport backends (planned: NFC, caBLEv2).
+  - Supporting multiple transports (currently USB HID, BLE, and Hybrid Transport). The library is designed to have pluggable transport implementations, making it easy to add transport backends (planned: NFC, caBLEv2).
 - **xdg-credentials-portal**: API proposal and reference implementation for a service which will expose FIDO2 and FIDO U2F Platform APIs via a D-Bus interface, for desktop applications to use - including conteinerized apps such as Flatpaks.
   - Similarly to [xdg-desktop-portal][xdg-desktop-portal] and [xdg-documents-portal][xdg-documents-portal], the service is intended to be accessed over a proposed D-Bus _portal_: [org.freedesktop.portal.Credentials][xml-spec].
 
@@ -38,16 +38,17 @@ The project is composed of multiple crates:
   - 🟢 GetPinUvAuthTokenUsingUvWithPermissions
 - [Passkey Authentication][passkeys]
   - 🟢 Discoverable credentials (resident keys)
-  - 🔴 Cloud-Assisted BLE (caBLE) transport ([#31][#31] blocked: spec not yet published)
+  - 🟢 Hybrid transport (caBLE v2): QR-initiated transactions ([#52][#52]: iOS only)
+  - 🟠 Hybrid transport (caBLE v2): State-assisted transactions transactions ([#31][#31]: planned)
 
 
 
 ### Transports
 
-|                      | USB (HID)                 | Bluetooth Low Energy (BLE)  | NFC                   | TPM 2.0 (Platform)    |
-| -------------------- | ------------------------- | --------------------------- | --------------------- | --------------------- |
-| **FIDO U2F**         | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
-| **WebAuthn (FIDO2)** | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) |
+|                      | USB (HID)                 | Bluetooth Low Energy (BLE)  | NFC                   | TPM 2.0 (Platform)    | Hybrid (caBLEv2)      |  
+| -------------------- | ------------------------- | --------------------------- | --------------------- | --------------------- | ----------------------|  
+| **FIDO U2F**         | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) | N/A |
+| **WebAuthn (FIDO2)** | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) | 🟠 Partly implemented ([#31][#31]) |
 
 
 ## xdg-credential-platform
