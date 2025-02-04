@@ -31,6 +31,11 @@ pub use get_assertion::{
     Ctap2AttestationStatement, Ctap2GetAssertionRequest, Ctap2GetAssertionResponse,
     FidoU2fAttestationStmt,
 };
+mod credential_management;
+pub use credential_management::{
+    Ctap2CredentialData, Ctap2CredentialManagementMetadata, Ctap2CredentialManagementRequest,
+    Ctap2CredentialManagementResponse,
+};
 
 // 32 (rpIdHash) + 1 (flags) + 4 (signCount) + 16 (aaguid
 const AUTHENTICATOR_DATA_PUBLIC_KEY_OFFSET: usize = 53;
@@ -44,6 +49,7 @@ pub enum Ctap2CommandCode {
     AuthenticatorClientPin = 0x06,
     AuthenticatorGetNextAssertion = 0x08,
     AuthenticatorBioEnrollment = 0x09,
+    AuthenticatorCredentialManagement = 0x0A,
     AuthenticatorSelection = 0x0B,
     AuthenticatorConfig = 0x0D,
 }
@@ -51,7 +57,8 @@ pub enum Ctap2CommandCode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ctap2PublicKeyCredentialRpEntity {
     pub id: String,
-    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl Ctap2PublicKeyCredentialRpEntity {
@@ -59,7 +66,7 @@ impl Ctap2PublicKeyCredentialRpEntity {
     pub fn dummy() -> Self {
         Self {
             id: String::from(".dummy"),
-            name: String::from(".dummy"),
+            name: Some(String::from(".dummy")),
         }
     }
 }
@@ -68,7 +75,7 @@ impl Ctap2PublicKeyCredentialRpEntity {
     pub fn new(id: &str, name: &str) -> Self {
         Self {
             id: String::from(id),
-            name: String::from(name),
+            name: Some(String::from(name)),
         }
     }
 }
