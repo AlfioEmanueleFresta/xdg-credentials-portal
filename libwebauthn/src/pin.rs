@@ -463,9 +463,20 @@ where
             return Err(Error::Platform(PlatformError::PinTooLong));
         }
 
+        let uv_proto = select_uv_proto(&get_info_response).await?;
+
         let current_pin = match get_info_response.options.as_ref().unwrap().get("clientPin") {
             // Obtaining the current PIN, if one is set
-            Some(true) => Some(obtain_pin(self, pin_provider, timeout).await?),
+            Some(true) => Some(
+                obtain_pin(
+                    self,
+                    &get_info_response,
+                    uv_proto.version(),
+                    pin_provider,
+                    timeout,
+                )
+                .await?,
+            ),
 
             // No PIN set yet
             Some(false) => None,
@@ -478,7 +489,6 @@ where
 
         // In preparation for obtaining pinUvAuthToken, the platform:
         // * Obtains a shared secret.
-        let uv_proto = select_uv_proto(&get_info_response).await?;
         let (public_key, shared_secret) = obtain_shared_secret(self, &uv_proto, timeout).await?;
 
         // paddedPin is newPin padded on the right with 0x00 bytes to make it 64 bytes long. (Since the maximum length of newPin is 63 bytes, there is always at least one byte of padding.)
