@@ -238,7 +238,7 @@ where
         let y: heapless::Vec<u8, 32> =
             heapless::Vec::from_slice(point.y().expect("Not identity nor compressed").as_bytes())
                 .unwrap();
-        cose::PublicKey::P256Key(cose::P256PublicKey {
+        cose::PublicKey::EcdhEsHkdf256Key(cose::EcdhEsHkdf256PublicKey {
             x: x.into(),
             y: y.into(),
         })
