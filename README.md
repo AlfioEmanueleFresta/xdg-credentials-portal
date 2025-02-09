@@ -2,7 +2,7 @@
 
 A Linux-native implementation of FIDO2 and FIDO U2F Platform API, fully written in Rust.
 
-This library supports multiple transports (see [Transports][#Transports] for a list) via a pluggable interface, making it easy to add additional backends.
+This library supports multiple transports (see [Transports](#Transports) for a list) via a pluggable interface, making it easy to add additional backends.
 
 ## The Linux Credentials Project
 
