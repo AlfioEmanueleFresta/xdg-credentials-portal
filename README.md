@@ -47,21 +47,14 @@ _Looking for the D-Bus API proposal?_ Check out [platform-api][linux-credentials
 
 ## Contributing
 
-Contributions are very welcome!
+We welcome contributions!
 
-If you'd like to contribute but you don't know where to start, check out the _Issues_ tab of [each repository][#repositories].
+If you'd like to contribute but you don't know where to start, check out the _Issues_ tab.
 
+[xdg-portal]: https://flatpak.github.io/xdg-desktop-portal/portal-docs.html
 [linux-credentials]: https://github.com/linux-credentials
 [webauthn]: https://www.w3.org/TR/webauthn/
-[firefox-hello]: https://blog.mozilla.org/security/2019/03/19/passwordless-web-authentication-support-via-windows-hello/
-[flatpak-issue]: https://github.com/flatpak/flatpak/issues/2764
-[firefox-flathub]: https://flathub.org/apps/details/org.mozilla.firefox
-[fido-android]: https://fidoalliance.org/news-your-google-android-7-phone-is-now-a-fido2-security-key/
-[fido-android-api]: https://developers.google.com/identity/fido/android/native-apps
-[android-fido-unprivileged]: https://developers.google.com/android/reference/com/google/android/gms/fido/fido2/Fido2ApiClient
-[android-fido-unprivileged-cert]: https://developers.google.com/identity/fido/android/native-apps#interoperability_with_your_website
-[android-fido-privileged]: https://developers.google.com/android/reference/com/google/android/gms/fido/fido2/Fido2PrivilegedApiClient
-[apple-apis]: https://developer.apple.com/documentation/authenticationservices/aswebauthenticationsession
+[passkeys]: https://fidoalliance.org/passkeys/
 [#10]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/10
 [#3]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/3
 [#4]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/4
@@ -69,4 +62,3 @@ If you'd like to contribute but you don't know where to start, check out the _Is
 [#17]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/17
 [#18]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/18
 [#31]: https://github.com/AlfioEmanueleFresta/xdg-credentials-portal/issues/31
-[passkeys]: https://fidoalliance.org/passkeys/
