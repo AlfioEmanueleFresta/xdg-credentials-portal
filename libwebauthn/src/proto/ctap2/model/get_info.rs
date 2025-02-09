@@ -65,41 +65,90 @@ pub struct Ctap2GetInfoResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub force_pin_change: Option<bool>,
 
+    /// minPINLength (0x0D)
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_pin_length: Option<u32>,
 
+    /// firmwareVersion (0x0E)
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub firmware_version: Option<u32>,
 
+    /// maxCredBlobLength (0x0F)
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_cred_blob_length: Option<u32>,
 
+    /// maxRPIDsForSetMinPINLength (0x10)
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_rpids_for_setminpinlength: Option<u32>,
 
+    /// preferredPlatformUvAttempts (0x11)
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preferred_platform_uv_attempts: Option<u32>,
 
+    /// uvModality (0x12)
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uv_modality: Option<u32>,
 
+    /// certifications (0x13)
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certifications: Option<HashMap<String, u32>>,
 
+    /// remainingDiscoverableCredentials (0x14)
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remaining_discoverable_creds: Option<u32>,
 
+    /// vendorPrototypeConfigCommands (0x15)
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vendor_proto_config_cmds: Option<Vec<u32>>,
+
+    /// attestationFormats (0x16)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation_formats: Option<Vec<String>>,
+
+    /// uvCountSinceLastPinEntry (0x17)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uv_count_since_last_pin_entry: Option<u32>,
+
+    /// longTouchForReset (0x18)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_touch_for_reset: Option<bool>,
+
+    /// encIdentifier (0x19)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enc_identifier: Option<ByteBuf>,
+
+    /// transportsForReset (0x1A)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transports_for_reset: Option<Vec<String>>,
+
+    /// pinComplexityPolicy (0x1B)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pin_complexity_policy: Option<bool>,
+
+    /// pinComplexityPolicyURL (0x1C)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pin_complexity_policy_url: Option<ByteBuf>,
+
+    /// maxPINLength (0x1D)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_pin_length: Option<u32>,
 }
 
 impl Ctap2GetInfoResponse {

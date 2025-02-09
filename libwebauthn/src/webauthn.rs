@@ -17,7 +17,8 @@ use crate::pin::{
 use crate::proto::ctap1::Ctap1;
 use crate::proto::ctap2::{
     Ctap2, Ctap2ClientPinRequest, Ctap2GetAssertionRequest, Ctap2GetInfoResponse,
-    Ctap2MakeCredentialRequest, Ctap2UserVerifiableRequest, Ctap2UserVerificationOperation,
+    Ctap2MakeCredentialRequest, Ctap2PinUvAuthProtocol, Ctap2UserVerifiableRequest,
+    Ctap2UserVerificationOperation,
 };
 pub use crate::transport::error::{CtapError, Error, PlatformError, TransportError};
 use crate::transport::{Channel, Ctap2AuthTokenPermission};
@@ -339,14 +340,22 @@ where
             return Ok(UsedPinUvAuthToken::LegacyUV);
         }
 
+        let uv_proto = select_uv_proto(&get_info_response).await?;
         // For operations that include a PIN, we want to fetch one before obtaining a shared secret.
         // This prevents the shared secret from expiring whilst we wait for the user to enter a PIN.
         let pin = match uv_operation {
             Ctap2UserVerificationOperation::None => unreachable!(),
             Ctap2UserVerificationOperation::GetPinToken
-            | Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingPinWithPermissions => {
-                Some(obtain_pin(channel, pin_provider, timeout).await?)
-            }
+            | Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingPinWithPermissions => Some(
+                obtain_pin(
+                    channel,
+                    &get_info_response,
+                    uv_proto.version(),
+                    pin_provider,
+                    timeout,
+                )
+                .await?,
+            ),
             Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingUvWithPermissions => {
                 None // TODO probably?
             }
@@ -354,7 +363,6 @@ where
 
         // In preparation for obtaining pinUvAuthToken, the platform:
         // * Obtains a shared secret.
-        let uv_proto = select_uv_proto(&get_info_response).await?;
         let (public_key, shared_secret) = obtain_shared_secret(channel, &uv_proto, timeout).await?;
 
         // Then the platform obtains a pinUvAuthToken from the authenticator, with the mc (and likely also with the ga)
@@ -446,16 +454,30 @@ where
 
 pub(crate) async fn obtain_pin<C>(
     channel: &mut C,
+    info: &Ctap2GetInfoResponse,
+    pin_proto: Ctap2PinUvAuthProtocol,
     pin_provider: &Box<dyn PinProvider>,
     timeout: Duration,
 ) -> Result<Vec<u8>, Error>
 where
     C: Channel,
 {
+    // FIDO 2.0 requires PIN protocol, 2.1 does not anymore
+    let pin_protocol = if info.supports_fido_2_1() {
+        None
+    } else {
+        Some(pin_proto)
+    };
+
     let attempts_left = channel
-        .ctap2_client_pin(&Ctap2ClientPinRequest::new_get_pin_retries(), timeout)
-        .await?
-        .pin_retries;
+        .ctap2_client_pin(
+            &Ctap2ClientPinRequest::new_get_pin_retries(pin_protocol),
+            timeout,
+        )
+        .await
+        .map(|x| x.pin_retries)
+        .ok() // It's optional, so soft-error here
+        .flatten();
     let Some(raw_pin) = pin_provider.provide_pin(attempts_left).await else {
         info!("User cancelled operation: no PIN provided");
         return Err(Error::Ctap(CtapError::PINRequired));

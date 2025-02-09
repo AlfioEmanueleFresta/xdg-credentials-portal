@@ -79,9 +79,9 @@ impl Ctap2ClientPinRequest {
         }
     }
 
-    pub fn new_get_pin_retries() -> Self {
+    pub fn new_get_pin_retries(pin_proto: Option<Ctap2PinUvAuthProtocol>) -> Self {
         Self {
-            protocol: None,
+            protocol: pin_proto,
             command: Ctap2PinUvAuthProtocolCommand::GetPinRetries,
             key_agreement: None,
             uv_auth_param: None,
