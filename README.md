@@ -4,11 +4,11 @@ A Linux-native implementation of FIDO2 and FIDO U2F Platform API, fully written 
 
 This library supports multiple transports (see [Transports](#Transports) for a list) via a pluggable interface, making it easy to add additional backends.
 
-## The Linux Credentials Project
+## Credentials for Linux Project
 
-This project is now part of [The Linux Credentials Project](linux-credentials), and was previously known as **xdg-credentials-portal**.
+This project is now part of the [Credentials for Linux](linux-credentials) project, and was previously known as **xdg-credentials-portal**.
 
-[The Linux Credentials Project](linux-credentials) aims to offer FIDO2 platform functionality (FIDO U2F, and WebAuthn) on Linux, over a [D-Bus Portal interface][xdg-portal].
+The [Credentials for Linux](linux-credentials) project aims to offer FIDO2 platform functionality (FIDO U2F, and WebAuthn) on Linux, over a [D-Bus Portal interface][xdg-portal].
 
 _Looking for the D-Bus API proposal?_ Check out [platform-api][linux-credentials].
 
