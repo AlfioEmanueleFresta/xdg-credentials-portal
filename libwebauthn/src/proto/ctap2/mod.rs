@@ -23,7 +23,7 @@ pub use model::{
 };
 pub use model::{
     Ctap2CredentialData, Ctap2CredentialManagementMetadata, Ctap2CredentialManagementRequest,
-    Ctap2CredentialManagementResponse,
+    Ctap2CredentialManagementResponse, Ctap2RPData,
 };
 pub use model::{Ctap2GetAssertionRequest, Ctap2GetAssertionResponse};
 pub use model::{Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse};

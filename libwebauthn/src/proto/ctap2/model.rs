@@ -34,7 +34,7 @@ pub use get_assertion::{
 mod credential_management;
 pub use credential_management::{
     Ctap2CredentialData, Ctap2CredentialManagementMetadata, Ctap2CredentialManagementRequest,
-    Ctap2CredentialManagementResponse,
+    Ctap2CredentialManagementResponse, Ctap2RPData,
 };
 
 // 32 (rpIdHash) + 1 (flags) + 4 (signCount) + 16 (aaguid

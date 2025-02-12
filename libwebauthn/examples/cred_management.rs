@@ -1,11 +1,12 @@
 use libwebauthn::management::CredentialManagement;
 use libwebauthn::pin::{PinProvider, StdinPromptPinProvider};
-use libwebauthn::proto::ctap2::{Ctap2, Ctap2CredentialData, Ctap2PublicKeyCredentialRpEntity};
+use libwebauthn::proto::ctap2::{
+    Ctap2, Ctap2CredentialData, Ctap2PublicKeyCredentialRpEntity, Ctap2RPData,
+};
 use libwebauthn::proto::CtapError;
 use libwebauthn::transport::hid::list_devices;
 use libwebauthn::transport::Device;
 use libwebauthn::webauthn::Error as WebAuthnError;
-use serde_bytes::ByteBuf;
 use std::fmt::Display;
 use std::io::{self, Write};
 use std::time::Duration;
@@ -54,15 +55,13 @@ fn format_credential(cred: &Ctap2CredentialData) -> String {
 async fn enumerate_rps<T: CredentialManagement>(
     channel: &mut T,
     pin_provider: &mut Box<dyn PinProvider>,
-) -> Result<Vec<(Ctap2PublicKeyCredentialRpEntity, ByteBuf)>, WebAuthnError> {
-    let (rp, rp_id_hash, total_rps) =
-        handle_retries!(channel.enumerate_rps_begin(pin_provider, TIMEOUT));
-    let mut rps = vec![(rp, rp_id_hash)];
+) -> Result<Vec<Ctap2RPData>, WebAuthnError> {
+    let (rp, total_rps) = handle_retries!(channel.enumerate_rps_begin(pin_provider, TIMEOUT));
+    let mut rps = vec![rp];
     // Starting at 1, as we already have one from the begin-call.
     for _ in 1..total_rps {
-        let (rp, rp_id_hash) =
-            handle_retries!(channel.enumerate_rps_next_rp(pin_provider, TIMEOUT));
-        rps.push((rp, rp_id_hash));
+        let rp = handle_retries!(channel.enumerate_rps_next_rp(pin_provider, TIMEOUT));
+        rps.push(rp);
     }
     Ok(rps)
 }
@@ -70,13 +69,10 @@ async fn enumerate_rps<T: CredentialManagement>(
 async fn enumerate_credentials_for_rp<T: CredentialManagement>(
     channel: &mut T,
     pin_provider: &mut Box<dyn PinProvider>,
-    rp_id_hash: &ByteBuf,
+    rp_id_hash: &[u8],
 ) -> Result<Vec<Ctap2CredentialData>, WebAuthnError> {
-    let (credential, num_of_creds) = handle_retries!(channel.enumerate_credentials_begin(
-        pin_provider,
-        rp_id_hash.clone(),
-        TIMEOUT
-    ));
+    let (credential, num_of_creds) =
+        handle_retries!(channel.enumerate_credentials_begin(pin_provider, rp_id_hash, TIMEOUT));
     let mut credentials = vec![credential];
     // Starting at 1, as we already have one from the begin-call.
     for _ in 1..num_of_creds {
@@ -168,18 +164,19 @@ pub async fn main() -> Result<(), WebAuthnError> {
         let rps = enumerate_rps(&mut channel, &mut pin_provider).await?;
         if options[idx] == Operation::EnumerateRPs {
             println!("RPs:");
-            for (rp, _rp_id_hash) in &rps {
-                println!("{}", format_rp(rp));
+            for rp in &rps {
+                println!("{}", format_rp(&rp.rp));
             }
             return Ok(());
         }
 
         let mut credlist = Vec::new();
-        for (rp, rp_id_hash) in &rps {
+        for rp in &rps {
             let creds =
-                enumerate_credentials_for_rp(&mut channel, &mut pin_provider, &rp_id_hash).await?;
+                enumerate_credentials_for_rp(&mut channel, &mut pin_provider, &rp.rp_id_hash)
+                    .await?;
             for cred in creds {
-                credlist.push((rp, cred));
+                credlist.push((rp.rp.clone(), cred));
             }
         }
         if options[idx] == Operation::EnumerateCredentials {

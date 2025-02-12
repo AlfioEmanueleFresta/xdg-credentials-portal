@@ -247,3 +247,15 @@ impl Ctap2CredentialData {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct Ctap2RPData {
+    pub rp: Ctap2PublicKeyCredentialRpEntity,
+    pub rp_id_hash: Vec<u8>,
+}
+
+impl Ctap2RPData {
+    pub fn new(rp: Ctap2PublicKeyCredentialRpEntity, rp_id_hash: Vec<u8>) -> Self {
+        Self { rp, rp_id_hash }
+    }
+}

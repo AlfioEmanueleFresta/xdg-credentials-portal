@@ -4,8 +4,8 @@ use crate::{
     proto::ctap2::{
         Ctap2, Ctap2AuthTokenPermissionRole, Ctap2CredentialData,
         Ctap2CredentialManagementMetadata, Ctap2CredentialManagementRequest, Ctap2GetInfoResponse,
-        Ctap2PublicKeyCredentialDescriptor, Ctap2PublicKeyCredentialRpEntity,
-        Ctap2PublicKeyCredentialUserEntity, Ctap2UserVerifiableRequest,
+        Ctap2PublicKeyCredentialDescriptor, Ctap2PublicKeyCredentialUserEntity, Ctap2RPData,
+        Ctap2UserVerifiableRequest,
     },
     transport::{
         error::{CtapError, Error},
@@ -30,16 +30,16 @@ pub trait CredentialManagement {
         &mut self,
         pin_provider: &mut Box<dyn PinProvider>,
         timeout: Duration,
-    ) -> Result<(Ctap2PublicKeyCredentialRpEntity, ByteBuf, u64), Error>;
+    ) -> Result<(Ctap2RPData, u64), Error>;
     async fn enumerate_rps_next_rp(
         &mut self,
         pin_provider: &mut Box<dyn PinProvider>,
         timeout: Duration,
-    ) -> Result<(Ctap2PublicKeyCredentialRpEntity, ByteBuf), Error>;
+    ) -> Result<Ctap2RPData, Error>;
     async fn enumerate_credentials_begin(
         &mut self,
         pin_provider: &mut Box<dyn PinProvider>,
-        rpid_hash: ByteBuf,
+        rpid_hash: &[u8],
         timeout: Duration,
     ) -> Result<(Ctap2CredentialData, u64), Error>;
     async fn enumerate_credentials_next(
@@ -102,7 +102,7 @@ where
         &mut self,
         pin_provider: &mut Box<dyn PinProvider>,
         timeout: Duration,
-    ) -> Result<(Ctap2PublicKeyCredentialRpEntity, ByteBuf, u64), Error> {
+    ) -> Result<(Ctap2RPData, u64), Error> {
         let mut req = Ctap2CredentialManagementRequest::new_enumerate_rps_begin();
         let resp = loop {
             let uv_auth_used = user_verification(
@@ -122,8 +122,7 @@ where
             )
         }?;
         Ok((
-            resp.rp.unwrap(),
-            resp.rp_id_hash.unwrap(),
+            Ctap2RPData::new(resp.rp.unwrap(), resp.rp_id_hash.unwrap().to_vec()),
             resp.total_rps.unwrap(),
         ))
     }
@@ -132,7 +131,7 @@ where
         &mut self,
         pin_provider: &mut Box<dyn PinProvider>,
         timeout: Duration,
-    ) -> Result<(Ctap2PublicKeyCredentialRpEntity, ByteBuf), Error> {
+    ) -> Result<Ctap2RPData, Error> {
         let mut req = Ctap2CredentialManagementRequest::new_enumerate_rps_next_rp();
         let resp = loop {
             let uv_auth_used = user_verification(
@@ -151,17 +150,19 @@ where
                 uv_auth_used
             )
         }?;
-        Ok((resp.rp.unwrap(), resp.rp_id_hash.unwrap()))
+        Ok(Ctap2RPData::new(
+            resp.rp.unwrap(),
+            resp.rp_id_hash.unwrap().to_vec(),
+        ))
     }
 
     async fn enumerate_credentials_begin(
         &mut self,
         pin_provider: &mut Box<dyn PinProvider>,
-        rpid_hash: ByteBuf,
+        rpid_hash: &[u8],
         timeout: Duration,
     ) -> Result<(Ctap2CredentialData, u64), Error> {
-        let mut req =
-            Ctap2CredentialManagementRequest::new_enumerate_credentials_begin(rpid_hash.as_slice());
+        let mut req = Ctap2CredentialManagementRequest::new_enumerate_credentials_begin(rpid_hash);
         let resp = loop {
             let uv_auth_used = user_verification(
                 self,
