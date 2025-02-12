@@ -10,6 +10,7 @@ use crate::proto::ctap2::model::Ctap2GetAssertionRequest;
 use crate::proto::ctap2::model::Ctap2MakeCredentialRequest;
 use crate::proto::ctap2::Ctap2AuthenticatorConfigRequest;
 use crate::proto::ctap2::Ctap2BioEnrollmentRequest;
+use crate::proto::ctap2::Ctap2CredentialManagementRequest;
 
 #[derive(Debug, Clone)]
 pub struct CborRequest {
@@ -78,6 +79,15 @@ impl From<&Ctap2BioEnrollmentRequest> for CborRequest {
     fn from(request: &Ctap2BioEnrollmentRequest) -> CborRequest {
         CborRequest {
             command: Ctap2CommandCode::AuthenticatorBioEnrollment,
+            encoded_data: to_vec(request).unwrap(),
+        }
+    }
+}
+
+impl From<&Ctap2CredentialManagementRequest> for CborRequest {
+    fn from(request: &Ctap2CredentialManagementRequest) -> CborRequest {
+        CborRequest {
+            command: Ctap2CommandCode::AuthenticatorCredentialManagement,
             encoded_data: to_vec(request).unwrap(),
         }
     }

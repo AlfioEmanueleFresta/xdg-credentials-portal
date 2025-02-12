@@ -1,10 +1,8 @@
-use std::time::Duration;
-
+use super::Ctap2PinUvAuthProtocol;
 use serde_bytes::ByteBuf;
 use serde_indexed::{DeserializeIndexed, SerializeIndexed};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-
-use super::Ctap2PinUvAuthProtocol;
+use std::time::Duration;
 
 #[derive(Debug, Clone, SerializeIndexed)]
 #[serde_indexed(offset = 1)]

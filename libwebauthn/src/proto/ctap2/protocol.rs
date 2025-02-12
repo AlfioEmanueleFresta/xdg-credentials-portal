@@ -12,8 +12,9 @@ use crate::transport::Channel;
 use super::model::Ctap2ClientPinResponse;
 use super::{
     Ctap2AuthenticatorConfigRequest, Ctap2BioEnrollmentRequest, Ctap2ClientPinRequest,
-    Ctap2GetAssertionRequest, Ctap2GetAssertionResponse, Ctap2GetInfoResponse,
-    Ctap2MakeCredentialRequest, Ctap2MakeCredentialResponse,
+    Ctap2CredentialManagementRequest, Ctap2CredentialManagementResponse, Ctap2GetAssertionRequest,
+    Ctap2GetAssertionResponse, Ctap2GetInfoResponse, Ctap2MakeCredentialRequest,
+    Ctap2MakeCredentialResponse,
 };
 
 const TIMEOUT_GET_INFO: Duration = Duration::from_millis(250);
@@ -51,6 +52,11 @@ pub trait Ctap2 {
         request: &Ctap2BioEnrollmentRequest,
         timeout: Duration,
     ) -> Result<Ctap2BioEnrollmentResponse, Error>;
+    async fn ctap2_credential_management(
+        &mut self,
+        request: &Ctap2CredentialManagementRequest,
+        timeout: Duration,
+    ) -> Result<Ctap2CredentialManagementResponse, Error>;
 }
 
 #[async_trait]
@@ -221,6 +227,32 @@ where
             // Can't deserialize an empty vec[], even though everything is optional and marked as default.
             // So we work around it here by creating our own default value.
             Ok(Ctap2BioEnrollmentResponse::default())
+        }
+    }
+
+    #[instrument(skip_all)]
+    async fn ctap2_credential_management(
+        &mut self,
+        request: &Ctap2CredentialManagementRequest,
+        _timeout: Duration,
+    ) -> Result<Ctap2CredentialManagementResponse, Error> {
+        trace!(?request);
+        self.cbor_send(&request.into(), TIMEOUT_GET_INFO).await?;
+        let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
+        match cbor_response.status_code {
+            CtapError::Ok => (),
+            error => return Err(Error::Ctap(error)),
+        };
+        if let Some(data) = cbor_response.data {
+            let ctap_response: Ctap2CredentialManagementResponse = from_slice(&data).unwrap();
+            debug!("CTAP2 CredentialManagement successful");
+            trace!(?ctap_response);
+            Ok(ctap_response)
+        } else {
+            // Seems like a bug in serde_indexed: https://github.com/trussed-dev/serde-indexed/issues/10
+            // Can't deserialize an empty vec[], even though everything is optional and marked as default.
+            // So we work around it here by creating our own default value.
+            Ok(Ctap2CredentialManagementResponse::default())
         }
     }
 }
