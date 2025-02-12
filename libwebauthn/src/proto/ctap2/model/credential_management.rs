@@ -29,6 +29,9 @@ pub struct Ctap2CredentialManagementRequest {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uv_auth_param: Option<ByteBuf>,
+
+    #[serde(skip)]
+    pub use_legacy_preview: bool,
 }
 
 #[repr(u32)]
@@ -128,6 +131,7 @@ impl Ctap2CredentialManagementRequest {
             subcommand_params: None,
             protocol: None,
             uv_auth_param: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -137,6 +141,7 @@ impl Ctap2CredentialManagementRequest {
             subcommand_params: None,
             protocol: None,
             uv_auth_param: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -146,6 +151,7 @@ impl Ctap2CredentialManagementRequest {
             subcommand_params: None,
             protocol: None,
             uv_auth_param: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -159,6 +165,7 @@ impl Ctap2CredentialManagementRequest {
             }),
             protocol: None,
             uv_auth_param: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -170,6 +177,7 @@ impl Ctap2CredentialManagementRequest {
             subcommand_params: None,
             protocol: None,
             uv_auth_param: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -183,6 +191,7 @@ impl Ctap2CredentialManagementRequest {
             }),
             protocol: None,
             uv_auth_param: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -199,6 +208,7 @@ impl Ctap2CredentialManagementRequest {
             }),
             protocol: None,
             uv_auth_param: None,
+            use_legacy_preview: false,
         }
     }
 }
@@ -227,7 +237,8 @@ pub struct Ctap2CredentialData {
     pub credential_id: Ctap2PublicKeyCredentialDescriptor,
     pub public_key: PublicKey,
     pub cred_protect: u64,
-    pub large_blob_key: ByteBuf,
+    /// This is not there in the Preview mode
+    pub large_blob_key: Option<Vec<u8>>,
 }
 
 impl Ctap2CredentialData {
@@ -236,7 +247,7 @@ impl Ctap2CredentialData {
         credential_id: Ctap2PublicKeyCredentialDescriptor,
         public_key: PublicKey,
         cred_protect: u64,
-        large_blob_key: ByteBuf,
+        large_blob_key: Option<Vec<u8>>,
     ) -> Self {
         Self {
             user,

@@ -185,7 +185,7 @@ where
             resp.credential_id.unwrap(),
             resp.public_key.unwrap(),
             resp.cred_protect.unwrap(),
-            resp.large_blob_key.unwrap(),
+            resp.large_blob_key.map(|x| x.into_vec()),
         );
         let total_creds = resp.total_credentials.unwrap();
         Ok((cred, total_creds))
@@ -219,7 +219,7 @@ where
             resp.credential_id.unwrap(),
             resp.public_key.unwrap(),
             resp.cred_protect.unwrap(),
-            resp.large_blob_key.unwrap(),
+            resp.large_blob_key.map(|x| x.into_vec()),
         );
         Ok(cred)
     }
@@ -270,6 +270,11 @@ where
             )
             .await?;
 
+            // Preview mode does not support "updateUserInfo" subcommand
+            if req.use_legacy_preview {
+                return Err(Error::Ctap(CtapError::InvalidCommand));
+            }
+
             // On success, this is an all-empty Ctap2AuthenticatorConfigResponse
             handle_errors!(
                 self,
@@ -316,5 +321,18 @@ impl Ctap2UserVerifiableRequest for Ctap2CredentialManagementRequest {
 
     fn can_use_uv(&self, _info: &Ctap2GetInfoResponse) -> bool {
         true
+    }
+
+    fn handle_legacy_preview(&mut self, info: &Ctap2GetInfoResponse) {
+        if let Some(options) = &info.options {
+            // According to Spec, we would also need to verify the token only
+            // supports FIDO_2_1_PRE, but let's be a bit less strict here and
+            // accept it simply reporting preview-support, but not the real one.
+            if options.get("credMgmt") != Some(&true)
+                && options.get("credentialMgmtPreview") == Some(&true)
+            {
+                self.use_legacy_preview = true;
+            }
+        }
     }
 }

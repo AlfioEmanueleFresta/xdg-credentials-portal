@@ -164,6 +164,26 @@ impl Ctap2GetInfoResponse {
         self.versions.iter().any(|v| v == "FIDO_2_1")
     }
 
+    pub fn supports_credential_management(&self) -> bool {
+        self.option_enabled("credMgmt") || self.option_enabled("credentialMgmtPreview")
+    }
+
+    pub fn supports_bio_enrollment(&self) -> bool {
+        if let Some(options) = &self.options {
+            return options.get("bioEnroll").is_some()
+                || options.get("userVerificationMgmtPreview").is_some();
+        }
+        false
+    }
+
+    pub fn has_bio_enrollments(&self) -> bool {
+        if let Some(options) = &self.options {
+            return options.get("bioEnroll") == Some(&true)
+                || options.get("userVerificationMgmtPreview") == Some(&true);
+        }
+        false
+    }
+
     /// Implements check for "Protected by some form of User Verification":
     ///   Either or both clientPin or built-in user verification methods are supported and enabled.
     ///   I.e., in the authenticatorGetInfo response the pinUvAuthToken option ID is present and set to true,

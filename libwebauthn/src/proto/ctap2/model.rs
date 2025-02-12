@@ -49,7 +49,9 @@ pub enum Ctap2CommandCode {
     AuthenticatorClientPin = 0x06,
     AuthenticatorGetNextAssertion = 0x08,
     AuthenticatorBioEnrollment = 0x09,
+    AuthenticatorBioEnrollmentPreview = 0x40,
     AuthenticatorCredentialManagement = 0x0A,
+    AuthenticatorCredentialManagementPreview = 0x41,
     AuthenticatorSelection = 0x0B,
     AuthenticatorConfig = 0x0D,
 }
@@ -198,6 +200,7 @@ pub trait Ctap2UserVerifiableRequest {
     fn permissions(&self) -> Ctap2AuthTokenPermissionRole;
     fn permissions_rpid(&self) -> Option<&str>;
     fn can_use_uv(&self, info: &Ctap2GetInfoResponse) -> bool;
+    fn handle_legacy_preview(&mut self, info: &Ctap2GetInfoResponse);
 }
 
 #[derive(Debug, Clone, Copy)]

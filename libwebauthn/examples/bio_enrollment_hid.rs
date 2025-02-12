@@ -46,17 +46,15 @@ impl Display for Operation {
 
 fn get_supported_options(info: &Ctap2GetInfoResponse) -> Vec<Operation> {
     let mut configure_ops = vec![];
-    if let Some(options) = &info.options {
-        if options.get("bioEnroll").is_some() {
-            configure_ops.push(Operation::GetModality);
-            configure_ops.push(Operation::GetFingerprintSensorInfo);
-            if options.get("bioEnroll") == Some(&true) {
-                configure_ops.push(Operation::EnumerateEnrollments);
-                configure_ops.push(Operation::RemoveEnrollment);
-                configure_ops.push(Operation::RenameEnrollment);
-            }
-            configure_ops.push(Operation::AddNewEnrollment);
+    if info.supports_bio_enrollment() {
+        configure_ops.push(Operation::GetModality);
+        configure_ops.push(Operation::GetFingerprintSensorInfo);
+        if info.has_bio_enrollments() {
+            configure_ops.push(Operation::EnumerateEnrollments);
+            configure_ops.push(Operation::RemoveEnrollment);
+            configure_ops.push(Operation::RenameEnrollment);
         }
+        configure_ops.push(Operation::AddNewEnrollment);
     }
     configure_ops
 }
@@ -155,7 +153,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     };
                     println!("Which enrollment do you want to remove?");
                     for (id, enrollment) in enrollments.iter().enumerate() {
-                        println!("{id} {enrollment:?}")
+                        println!("({id}) {enrollment:?}")
                     }
                     let idx = ask_for_user_input(enrollments.len());
                     channel
@@ -186,7 +184,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     };
                     println!("Which enrollment do you want to rename?");
                     for (id, enrollment) in enrollments.iter().enumerate() {
-                        println!("{id} {enrollment:?}")
+                        println!("({id}) {enrollment:?}")
                     }
                     let idx = ask_for_user_input(enrollments.len());
                     print!("New name: ");
