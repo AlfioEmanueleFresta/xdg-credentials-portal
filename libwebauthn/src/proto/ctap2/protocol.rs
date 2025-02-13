@@ -6,8 +6,9 @@ use tracing::{debug, instrument, trace, warn};
 
 use crate::proto::ctap2::cbor::CborRequest;
 use crate::proto::ctap2::{Ctap2BioEnrollmentResponse, Ctap2CommandCode};
-use crate::transport::error::{CtapError, Error};
+use crate::transport::error::{CtapError, Error, PlatformError};
 use crate::transport::Channel;
+use crate::unwrap_field;
 
 use super::model::Ctap2ClientPinResponse;
 use super::{
@@ -73,7 +74,8 @@ where
             CtapError::Ok => (),
             error => return Err(Error::Ctap(error)),
         };
-        let ctap_response: Ctap2GetInfoResponse = from_slice(&cbor_response.data.unwrap()).unwrap();
+        let ctap_response: Ctap2GetInfoResponse =
+            from_slice(&unwrap_field!(cbor_response.data)).unwrap();
         debug!("CTAP2 GetInfo successful");
         trace!(?ctap_response);
         Ok(ctap_response)
@@ -93,7 +95,7 @@ where
             error => return Err(Error::Ctap(error)),
         };
         let ctap_response: Ctap2MakeCredentialResponse =
-            from_slice(&cbor_response.data.unwrap()).unwrap();
+            from_slice(&unwrap_field!(cbor_response.data)).unwrap();
         debug!("CTAP2 MakeCredential successful");
         trace!(?ctap_response);
         Ok(ctap_response)
@@ -113,7 +115,7 @@ where
             error => return Err(Error::Ctap(error)),
         };
         let ctap_response: Ctap2GetAssertionResponse =
-            from_slice(&cbor_response.data.unwrap()).unwrap();
+            from_slice(&unwrap_field!(cbor_response.data)).unwrap();
         debug!("CTAP2 GetAssertion successful");
         trace!(?ctap_response);
         Ok(ctap_response)
@@ -129,7 +131,7 @@ where
         self.cbor_send(&cbor_request, TIMEOUT_GET_INFO).await?;
         let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
         let ctap_response: Ctap2GetAssertionResponse =
-            from_slice(&cbor_response.data.unwrap()).unwrap();
+            from_slice(&unwrap_field!(cbor_response.data)).unwrap();
         debug!("CTAP2 GetNextAssertion successful");
         trace!(?ctap_response);
         Ok(ctap_response)

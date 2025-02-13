@@ -7,9 +7,10 @@ use crate::{
         Ctap2GetInfoResponse, Ctap2LastEnrollmentSampleStatus, Ctap2UserVerifiableRequest,
     },
     transport::{
-        error::{CtapError, Error},
+        error::{CtapError, Error, PlatformError},
         Channel,
     },
+    unwrap_field,
     webauthn::{handle_errors, user_verification, UsedPinUvAuthToken},
 };
 use async_trait::async_trait;
@@ -220,10 +221,9 @@ where
             )
         }?;
 
-        // TODO: authenticators MUST return these, but should we guard against devices that don't, instead of unwrapping here?
-        let remaining_samples = resp.remaining_samples.unwrap();
-        let template_id = resp.template_id.unwrap().clone();
-        let sample_status = resp.last_enroll_sample_status.unwrap();
+        let remaining_samples = unwrap_field!(resp.remaining_samples);
+        let template_id = unwrap_field!(resp.template_id).clone();
+        let sample_status = unwrap_field!(resp.last_enroll_sample_status);
         Ok((template_id.to_vec(), sample_status, remaining_samples))
     }
 
@@ -255,9 +255,8 @@ where
             )
         }?;
 
-        // TODO: authenticators MUST return these, but should we guard against devices that don't, instead of unwrapping here?
-        let remaining_samples = resp.remaining_samples.unwrap();
-        let sample_status = resp.last_enroll_sample_status.unwrap();
+        let remaining_samples = unwrap_field!(resp.remaining_samples);
+        let sample_status = unwrap_field!(resp.last_enroll_sample_status);
         Ok((sample_status, remaining_samples))
     }
 

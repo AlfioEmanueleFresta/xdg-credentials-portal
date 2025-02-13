@@ -13,6 +13,13 @@ extern crate num_derive;
 #[macro_use]
 extern crate bitflags;
 
+macro_rules! unwrap_field {
+    ($field:expr) => {
+        $field.ok_or(Error::Platform(PlatformError::InvalidDeviceResponse))?
+    };
+}
+pub(crate) use unwrap_field;
+
 #[derive(Debug)]
 pub enum Transport {
     Usb,
