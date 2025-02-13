@@ -70,6 +70,7 @@ pub trait BioEnrollment {
 pub struct Ctap2BioEnrollmentFingerprintSensorInfo {
     pub fingerprint_kind: Ctap2BioEnrollmentFingerprintKind,
     pub max_capture_samples_required_for_enroll: Option<u64>,
+    /// Not returned/supported by BioEnrollmentPreview
     pub max_template_friendly_name: Option<u64>,
 }
 
@@ -332,5 +333,18 @@ impl Ctap2UserVerifiableRequest for Ctap2BioEnrollmentRequest {
 
     fn can_use_uv(&self, info: &Ctap2GetInfoResponse) -> bool {
         info.option_enabled("uvBioEnroll")
+    }
+
+    fn handle_legacy_preview(&mut self, info: &Ctap2GetInfoResponse) {
+        if let Some(options) = &info.options {
+            // According to Spec, we would also need to verify the token only
+            // supports FIDO_2_1_PRE, but let's be a bit less strict here and
+            // accept it simply reporting preview-support, but not the real one.
+            if options.get("bioEnroll") != Some(&true)
+                && options.get("userVerificationMgmtPreview") == Some(&true)
+            {
+                self.use_legacy_preview = true;
+            }
+        }
     }
 }

@@ -36,6 +36,9 @@ pub struct Ctap2BioEnrollmentRequest {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub get_modality: Option<bool>,
+
+    #[serde(skip)]
+    pub use_legacy_preview: bool,
 }
 
 #[repr(u32)]
@@ -166,6 +169,7 @@ impl Ctap2BioEnrollmentRequest {
             protocol: None,      // Get's filled in later
             uv_auth_param: None, // Get's filled in later
             get_modality: Some(true),
+            use_legacy_preview: false,
         }
     }
 
@@ -177,6 +181,7 @@ impl Ctap2BioEnrollmentRequest {
             protocol: None,      // Get's filled in later
             uv_auth_param: None, // Get's filled in later
             get_modality: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -188,6 +193,7 @@ impl Ctap2BioEnrollmentRequest {
             protocol: None,      // Get's filled in later
             uv_auth_param: None, // Get's filled in later
             get_modality: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -203,6 +209,7 @@ impl Ctap2BioEnrollmentRequest {
             protocol: None,      // Get's filled in later
             uv_auth_param: None, // Get's filled in later
             get_modality: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -218,6 +225,7 @@ impl Ctap2BioEnrollmentRequest {
             protocol: None,      // Get's filled in later
             uv_auth_param: None, // Get's filled in later
             get_modality: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -239,6 +247,7 @@ impl Ctap2BioEnrollmentRequest {
             protocol: None,      // Get's filled in later
             uv_auth_param: None, // Get's filled in later
             get_modality: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -256,6 +265,7 @@ impl Ctap2BioEnrollmentRequest {
             protocol: None,
             uv_auth_param: None,
             get_modality: None,
+            use_legacy_preview: false,
         }
     }
 
@@ -267,6 +277,7 @@ impl Ctap2BioEnrollmentRequest {
             protocol: None,
             uv_auth_param: None,
             get_modality: None,
+            use_legacy_preview: false,
         }
     }
 }

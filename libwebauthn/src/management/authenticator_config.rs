@@ -223,4 +223,8 @@ impl Ctap2UserVerifiableRequest for Ctap2AuthenticatorConfigRequest {
     fn can_use_uv(&self, info: &Ctap2GetInfoResponse) -> bool {
         info.option_enabled("uvAcfg")
     }
+
+    fn handle_legacy_preview(&mut self, _info: &Ctap2GetInfoResponse) {
+        // No-op
+    }
 }

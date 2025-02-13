@@ -77,8 +77,13 @@ impl From<&Ctap2AuthenticatorConfigRequest> for CborRequest {
 
 impl From<&Ctap2BioEnrollmentRequest> for CborRequest {
     fn from(request: &Ctap2BioEnrollmentRequest) -> CborRequest {
+        let command = if request.use_legacy_preview {
+            Ctap2CommandCode::AuthenticatorBioEnrollmentPreview
+        } else {
+            Ctap2CommandCode::AuthenticatorBioEnrollment
+        };
         CborRequest {
-            command: Ctap2CommandCode::AuthenticatorBioEnrollment,
+            command,
             encoded_data: to_vec(request).unwrap(),
         }
     }
@@ -86,8 +91,13 @@ impl From<&Ctap2BioEnrollmentRequest> for CborRequest {
 
 impl From<&Ctap2CredentialManagementRequest> for CborRequest {
     fn from(request: &Ctap2CredentialManagementRequest) -> CborRequest {
+        let command = if request.use_legacy_preview {
+            Ctap2CommandCode::AuthenticatorCredentialManagementPreview
+        } else {
+            Ctap2CommandCode::AuthenticatorCredentialManagement
+        };
         CborRequest {
-            command: Ctap2CommandCode::AuthenticatorCredentialManagement,
+            command,
             encoded_data: to_vec(request).unwrap(),
         }
     }

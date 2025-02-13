@@ -264,6 +264,7 @@ where
     R: Ctap2UserVerifiableRequest,
 {
     let get_info_response = channel.ctap2_get_info().await?;
+    ctap2_request.handle_legacy_preview(&get_info_response);
     let uv_proto = select_uv_proto(&get_info_response).await?;
     let token_identifier = Ctap2AuthTokenPermission::new(
         uv_proto.version(),

@@ -175,6 +175,10 @@ impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
     fn can_use_uv(&self, _info: &Ctap2GetInfoResponse) -> bool {
         true
     }
+
+    fn handle_legacy_preview(&mut self, _info: &Ctap2GetInfoResponse) {
+        // No-op
+    }
 }
 
 impl TryFrom<&Ctap2MakeCredentialResponse> for Ctap2PublicKeyCredentialDescriptor {

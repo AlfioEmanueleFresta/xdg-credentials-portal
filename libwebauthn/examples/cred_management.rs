@@ -133,11 +133,9 @@ pub async fn main() -> Result<(), WebAuthnError> {
         let mut channel = device.channel().await?;
         let info = channel.ctap2_get_info().await?;
 
-        if let Some(options) = &info.options {
-            if options.get("credMgmt") != Some(&true) {
-                println!("Your token does not support credential management.");
-                return Err(WebAuthnError::Ctap(CtapError::InvalidCommand));
-            }
+        if !info.supports_credential_management() {
+            println!("Your token does not support credential management.");
+            return Err(WebAuthnError::Ctap(CtapError::InvalidCommand));
         }
 
         let options = [
