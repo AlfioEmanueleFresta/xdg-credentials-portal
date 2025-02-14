@@ -14,9 +14,17 @@ extern crate num_derive;
 extern crate bitflags;
 
 macro_rules! unwrap_field {
-    ($field:expr) => {
-        $field.ok_or(Error::Platform(PlatformError::InvalidDeviceResponse))?
-    };
+    ($field:expr) => {{
+        if let Some(f) = $field {
+            f
+        } else {
+            tracing::error!(
+                "Device response did not contain expected field: {}",
+                stringify!($field)
+            );
+            return Err(Error::Platform(PlatformError::InvalidDeviceResponse));
+        }
+    }};
 }
 pub(crate) use unwrap_field;
 
