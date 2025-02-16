@@ -29,10 +29,10 @@ pub struct Ctap2ClientPinRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pin_hash_encrypted: Option<ByteBuf>,
 
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "always_skip")]
     pub unused_07: (),
 
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "always_skip")]
     pub unused_08: (),
 
     /// permissions (0x09)
@@ -236,4 +236,10 @@ pub struct Ctap2ClientPinResponse {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uv_retries: Option<u32>,
+}
+
+// Required by serde_indexed, as serde(skip) isn't supported yet:
+//   https://github.com/trussed-dev/serde-indexed/pull/14
+fn always_skip(_v: &()) -> bool {
+    true
 }
