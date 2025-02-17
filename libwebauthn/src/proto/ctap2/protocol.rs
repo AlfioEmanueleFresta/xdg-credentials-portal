@@ -20,6 +20,22 @@ use super::{
 
 const TIMEOUT_GET_INFO: Duration = Duration::from_millis(250);
 
+macro_rules! parse_cbor {
+    ($type:ty, $data:expr) => {{
+        match from_slice::<$type>($data) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::error!(
+                    "Failed to parse {} from CBOR-data provided by the device. Parsing error: {:?}",
+                    stringify!($type),
+                    e
+                );
+                return Err(Error::Platform(PlatformError::InvalidDeviceResponse));
+            }
+        }
+    }};
+}
+
 #[async_trait]
 pub trait Ctap2 {
     async fn ctap2_get_info(&mut self) -> Result<Ctap2GetInfoResponse, Error>;
@@ -74,8 +90,8 @@ where
             CtapError::Ok => (),
             error => return Err(Error::Ctap(error)),
         };
-        let ctap_response: Ctap2GetInfoResponse =
-            from_slice(&unwrap_field!(cbor_response.data)).unwrap();
+        let data = unwrap_field!(cbor_response.data);
+        let ctap_response = parse_cbor!(Ctap2GetInfoResponse, &data);
         debug!("CTAP2 GetInfo successful");
         trace!(?ctap_response);
         Ok(ctap_response)
@@ -94,8 +110,8 @@ where
             CtapError::Ok => (),
             error => return Err(Error::Ctap(error)),
         };
-        let ctap_response: Ctap2MakeCredentialResponse =
-            from_slice(&unwrap_field!(cbor_response.data)).unwrap();
+        let data = unwrap_field!(cbor_response.data);
+        let ctap_response = parse_cbor!(Ctap2MakeCredentialResponse, &data);
         debug!("CTAP2 MakeCredential successful");
         trace!(?ctap_response);
         Ok(ctap_response)
@@ -114,8 +130,8 @@ where
             CtapError::Ok => (),
             error => return Err(Error::Ctap(error)),
         };
-        let ctap_response: Ctap2GetAssertionResponse =
-            from_slice(&unwrap_field!(cbor_response.data)).unwrap();
+        let data = unwrap_field!(cbor_response.data);
+        let ctap_response = parse_cbor!(Ctap2GetAssertionResponse, &data);
         debug!("CTAP2 GetAssertion successful");
         trace!(?ctap_response);
         Ok(ctap_response)
@@ -130,8 +146,8 @@ where
         let cbor_request = CborRequest::new(Ctap2CommandCode::AuthenticatorGetNextAssertion);
         self.cbor_send(&cbor_request, TIMEOUT_GET_INFO).await?;
         let cbor_response = self.cbor_recv(TIMEOUT_GET_INFO).await?;
-        let ctap_response: Ctap2GetAssertionResponse =
-            from_slice(&unwrap_field!(cbor_response.data)).unwrap();
+        let data = unwrap_field!(cbor_response.data);
+        let ctap_response = parse_cbor!(Ctap2GetAssertionResponse, &data);
         debug!("CTAP2 GetNextAssertion successful");
         trace!(?ctap_response);
         Ok(ctap_response)
@@ -171,7 +187,7 @@ where
             error => return Err(Error::Ctap(error)),
         };
         if let Some(data) = cbor_response.data {
-            let ctap_response: Ctap2ClientPinResponse = from_slice(&data).unwrap();
+            let ctap_response = parse_cbor!(Ctap2ClientPinResponse, &data);
             debug!("CTAP2 ClientPin successful");
             trace!(?ctap_response);
             Ok(ctap_response)
@@ -220,7 +236,7 @@ where
             error => return Err(Error::Ctap(error)),
         };
         if let Some(data) = cbor_response.data {
-            let ctap_response: Ctap2BioEnrollmentResponse = from_slice(&data).unwrap();
+            let ctap_response = parse_cbor!(Ctap2BioEnrollmentResponse, &data);
             debug!("CTAP2 BioEnrollment successful");
             trace!(?ctap_response);
             Ok(ctap_response)
@@ -246,7 +262,7 @@ where
             error => return Err(Error::Ctap(error)),
         };
         if let Some(data) = cbor_response.data {
-            let ctap_response: Ctap2CredentialManagementResponse = from_slice(&data).unwrap();
+            let ctap_response = parse_cbor!(Ctap2CredentialManagementResponse, &data);
             debug!("CTAP2 CredentialManagement successful");
             trace!(?ctap_response);
             Ok(ctap_response)
