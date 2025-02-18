@@ -61,7 +61,7 @@ tokio-tungstenite = { version = "0.20.1", features = [
     "rustls-tls-native-roots",
 ] }
 tokio-stream = "0.1.4"
-snow = { path = "../snow", features = ["p256"] }
+snow = { version = "0.10.0-alpha.1", features = ["use-p256"] }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
