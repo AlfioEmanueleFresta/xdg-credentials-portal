@@ -4,21 +4,17 @@ use super::{
     Ctap2PublicKeyCredentialUserEntity, Ctap2UserVerifiableRequest,
 };
 use crate::{
-    ops::webauthn::MakeCredentialRequest,
-    pin::PinUvAuthProtocol,
-    proto::{
-        ctap2::{model::AUTHENTICATOR_DATA_PUBLIC_KEY_OFFSET, Ctap2PublicKeyCredentialType},
-        CtapError,
+    fido::AuthenticatorData,
+    ops::webauthn::{
+        MakeCredentialRequest, MakeCredentialsRequestExtensions, MakeCredentialsResponseExtensions,
     },
+    pin::PinUvAuthProtocol,
 };
-use byteorder::{BigEndian, ReadBytesExt};
 use serde::Serialize;
 use serde_bytes::ByteBuf;
 use serde_cbor::Value;
 use serde_indexed::{DeserializeIndexed, SerializeIndexed};
 use std::collections::BTreeMap;
-use std::io::Cursor as IOCursor;
-use tracing::warn;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Ctap2MakeCredentialOptions {
@@ -67,8 +63,8 @@ pub struct Ctap2MakeCredentialRequest {
     pub exclude: Option<Vec<Ctap2PublicKeyCredentialDescriptor>>,
 
     /// extensions (0x06)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extensions_cbor: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Self::skip_serializing_extensions")]
+    pub extensions: Option<MakeCredentialsRequestExtensions>,
 
     /// options (0x07)
     #[serde(skip_serializing_if = "Self::skip_serializing_options")]
@@ -91,6 +87,14 @@ impl Ctap2MakeCredentialRequest {
     pub fn skip_serializing_options(options: &Option<Ctap2MakeCredentialOptions>) -> bool {
         options.map_or(true, |options| options.skip_serializing())
     }
+
+    pub fn skip_serializing_extensions(
+        extensions: &Option<MakeCredentialsRequestExtensions>,
+    ) -> bool {
+        extensions
+            .as_ref()
+            .map_or(true, |extensions| extensions.skip_serializing())
+    }
 }
 
 impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
@@ -101,11 +105,7 @@ impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
             user: op.user.clone(),
             algorithms: op.algorithms.clone(),
             exclude: op.exclude.clone(),
-            extensions_cbor: if op.extensions_cbor.is_empty() {
-                None
-            } else {
-                Some(op.extensions_cbor.clone())
-            },
+            extensions: op.extensions.clone(),
             options: Some(Ctap2MakeCredentialOptions {
                 require_resident_key: if op.require_resident_key {
                     Some(true)
@@ -125,7 +125,7 @@ impl From<&MakeCredentialRequest> for Ctap2MakeCredentialRequest {
 #[serde_indexed(offset = 1)]
 pub struct Ctap2MakeCredentialResponse {
     pub format: String,
-    pub authenticator_data: ByteBuf,
+    pub authenticator_data: AuthenticatorData<MakeCredentialsResponseExtensions>,
     pub attestation_statement: Ctap2AttestationStatement,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -178,32 +178,5 @@ impl Ctap2UserVerifiableRequest for Ctap2MakeCredentialRequest {
 
     fn handle_legacy_preview(&mut self, _info: &Ctap2GetInfoResponse) {
         // No-op
-    }
-}
-
-impl TryFrom<&Ctap2MakeCredentialResponse> for Ctap2PublicKeyCredentialDescriptor {
-    type Error = CtapError;
-    fn try_from(response: &Ctap2MakeCredentialResponse) -> Result<Self, Self::Error> {
-        if response.authenticator_data.len() < AUTHENTICATOR_DATA_PUBLIC_KEY_OFFSET + 2 {
-            warn!("Failed to parse credential ID: invalid authenticator data length");
-            return Err(CtapError::InvalidCredential);
-        }
-
-        let mut cursor = IOCursor::new(response.authenticator_data.as_ref());
-        cursor.set_position(AUTHENTICATOR_DATA_PUBLIC_KEY_OFFSET as u64);
-        let len = cursor.read_u16::<BigEndian>().unwrap() as usize;
-        let offset = AUTHENTICATOR_DATA_PUBLIC_KEY_OFFSET + 2;
-        if response.authenticator_data.len() < offset + len {
-            warn!("Failed to parse credential ID: not enough bytes");
-            return Err(CtapError::InvalidCredential);
-        }
-
-        let credential_id = response.authenticator_data[offset..offset + len].to_vec();
-        assert_eq!(len, credential_id.len());
-        Ok(Ctap2PublicKeyCredentialDescriptor {
-            r#type: Ctap2PublicKeyCredentialType::PublicKey,
-            id: ByteBuf::from(credential_id),
-            transports: None,
-        })
     }
 }

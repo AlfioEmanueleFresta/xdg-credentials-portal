@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use byteorder::{BigEndian, WriteBytesExt};
 use ctap_types::cose;
 use serde_bytes::ByteBuf;
 use serde_cbor::to_vec;
@@ -9,6 +8,7 @@ use tracing::{error, trace};
 use x509_parser::nom::AsBytes;
 
 use super::webauthn::MakeCredentialRequest;
+use crate::fido::{AttestedCredentialData, AuthenticatorData, AuthenticatorDataFlags};
 use crate::ops::webauthn::{GetAssertionResponse, MakeCredentialResponse};
 use crate::proto::ctap1::{Ctap1RegisterRequest, Ctap1SignRequest};
 use crate::proto::ctap1::{Ctap1RegisterResponse, Ctap1SignResponse};
@@ -51,11 +51,6 @@ impl UpgradableResponse<MakeCredentialResponse, MakeCredentialRequest> for Regis
         &self,
         request: &MakeCredentialRequest,
     ) -> Result<MakeCredentialResponse, Error> {
-        // Initialize attestedCredData:
-        // Let credentialIdLength be a 2-byte unsigned big-endian integer representing length of the Credential ID
-        // initialized with CTAP1/U2F response key handle length.
-        let credential_id_len: usize = self.key_handle.len();
-
         // Let x9encodedUserPublicKeybe the user public key returned in the U2F registration response message [U2FRawMsgs].
         // Let coseEncodedCredentialPublicKey be the result of converting x9encodedUserPublicKey’s value
         // from ANS X9.62 / Sec-1 v2 uncompressed curve point representation [SEC1V2]
@@ -94,21 +89,20 @@ impl UpgradableResponse<MakeCredentialResponse, MakeCredentialRequest> for Regis
         // credentialIdLength  Credential ID.                     Initialized with credentialId bytes.
         // 77                  The credential public key.         Initialized with coseEncodedCredentialPublicKey bytes.
 
-        let mut attested_cred_data = Vec::new();
-        attested_cred_data.extend(&[0u8; 16]); // aaguid zeros
-        attested_cred_data
-            .write_u16::<BigEndian>(credential_id_len as u16)
-            .unwrap();
-        attested_cred_data.extend(&self.key_handle);
-        attested_cred_data.extend(cose_encoded_public_key);
+        let attested_cred_data = AttestedCredentialData {
+            aaguid: [0u8; 16], // aaguid zeros
+            credential_id: self.key_handle.clone(),
+            credential_public_key: cose_public_key,
+        };
 
         // Initialize authenticatorData:
         // Let flags be a byte whose zeroth bit (bit 0, UP) is set, and whose sixth bit (bit 6, AT) is set,
         // and all other bits are zero (bit zero is the least significant bit)
-        let flags: u8 = 0b00000001 | 0b01000000;
+        let flags =
+            AuthenticatorDataFlags::USER_PRESENT | AuthenticatorDataFlags::ATTESTED_CREDENTIALS;
 
         // Let signCount be a 4-byte unsigned integer initialized to zero.
-        let sign_count: [u8; 4] = [0u8; 4];
+        let signature_count: u32 = 0;
 
         // Let authenticatorData be a byte string with the following structure:
         //
@@ -118,14 +112,16 @@ impl UpgradableResponse<MakeCredentialResponse, MakeCredentialRequest> for Regis
         // 1                   Flags                                    Initialized with flags' value.
         // 4                   Signature counter (signCount).           Initialized with signCount bytes.
         // Variable Length     Attested credential data.                Initialized with attestedCredData’s value.
-        let mut auth_data = Vec::new();
         let mut hasher = Sha256::default();
         hasher.update(request.relying_party.id.as_bytes());
-        let rp_id_hash = hasher.finalize().to_vec();
-        auth_data.extend(rp_id_hash);
-        auth_data.extend(&[flags]);
-        auth_data.extend(&sign_count);
-        auth_data.extend(&attested_cred_data);
+        let rp_id_hash = hasher.finalize().into();
+        let authenticator_data = AuthenticatorData {
+            rp_id_hash,
+            flags,
+            signature_count,
+            attested_credential: Some(attested_cred_data),
+            extensions: None,
+        };
 
         // Let attestationStatement be a CBOR map (see "attStmtTemplate" in Generating an Attestation Object [WebAuthn])
         // with the following keys, whose values are as follows:
@@ -146,8 +142,8 @@ impl UpgradableResponse<MakeCredentialResponse, MakeCredentialRequest> for Regis
         // * Set "attStmt" to attestationStatement.
         Ok(Ctap2MakeCredentialResponse {
             format: String::from("fido-u2f"),
-            authenticator_data: ByteBuf::from(auth_data),
-            attestation_statement: attestation_statement,
+            authenticator_data,
+            attestation_statement,
             enterprise_attestation: None,
             large_blob_key: None,
             unsigned_extension_output: None,
@@ -162,12 +158,12 @@ impl UpgradableResponse<GetAssertionResponse, SignRequest> for SignResponse {
         // Copy bits 0 (the UP bit) and bit 1 from the CTAP2/U2F response user presence byte to bits 0 and 1 of the
         // CTAP2 flags, respectively. Set all other bits of flags to zero. Note: bit zero is the least significant bit.
         // See also Authenticator Data section of [WebAuthn].
-        let mut flags: u8 = 0;
-        flags |= 0b00000001; // up always set
-                             // bit 1 is unused, ignoring
+        // up always set
+        // bit 1 is unused, ignoring
+        let flags = AuthenticatorDataFlags::USER_PRESENT;
 
         // Let signCount be a 4-byte unsigned integer initialized with CTAP1/U2F response counter field.
-        let sign_count = self.counter;
+        let signature_count = self.counter;
 
         // Let authenticatorData is a byte string of following structure:
         // Length (in bytes)        Description                     Value
@@ -175,10 +171,13 @@ impl UpgradableResponse<GetAssertionResponse, SignRequest> for SignResponse {
         // 32                       SHA-256 hash of the rp.id.      Initialized with rpIdHash bytes.
         // 1                        Flags                           Initialized with flags' value.
         // 4                        Signature counter (signCount)   Initialized with signCount bytes.
-        let mut auth_data = Vec::new();
-        auth_data.extend(&request.app_id_hash);
-        auth_data.extend(&[flags]);
-        auth_data.write_u32::<BigEndian>(sign_count).unwrap();
+        let authenticator_data = AuthenticatorData {
+            rp_id_hash: request.app_id_hash.clone().try_into().unwrap(),
+            flags,
+            signature_count,
+            attested_credential: None,
+            extensions: None,
+        };
 
         // Let authenticatorGetAssertionResponse be a CBOR map with the following keys whose values are as follows: [..]
         let upgraded_response: GetAssertionResponse = Ctap2GetAssertionResponse {
@@ -187,7 +186,7 @@ impl UpgradableResponse<GetAssertionResponse, SignRequest> for SignResponse {
                 id: ByteBuf::from(request.key_handle.clone()),
                 transports: None,
             }),
-            authenticator_data: ByteBuf::from(auth_data),
+            authenticator_data,
             signature: ByteBuf::from(self.signature.clone()),
             user: None,
             credentials_count: None,
