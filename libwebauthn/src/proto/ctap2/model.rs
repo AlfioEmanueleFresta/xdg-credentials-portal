@@ -37,9 +37,6 @@ pub use credential_management::{
     Ctap2CredentialManagementResponse, Ctap2RPData,
 };
 
-// 32 (rpIdHash) + 1 (flags) + 4 (signCount) + 16 (aaguid
-const AUTHENTICATOR_DATA_PUBLIC_KEY_OFFSET: usize = 53;
-
 #[derive(Debug, IntoPrimitive, TryFromPrimitive, Copy, Clone, PartialEq, Serialize_repr)]
 #[repr(u8)]
 pub enum Ctap2CommandCode {

@@ -1,4 +1,10 @@
-use crate::{ops::webauthn::GetAssertionRequest, pin::PinUvAuthProtocol};
+use crate::{
+    fido::AuthenticatorData,
+    ops::webauthn::{
+        GetAssertionRequest, GetAssertionRequestExtensions, GetAssertionResponseExtensions,
+    },
+    pin::PinUvAuthProtocol,
+};
 
 use super::{
     Ctap2AuthTokenPermissionRole, Ctap2COSEAlgorithmIdentifier, Ctap2GetInfoResponse,
@@ -104,8 +110,8 @@ pub struct Ctap2GetAssertionRequest {
     pub allow: Vec<Ctap2PublicKeyCredentialDescriptor>,
 
     /// extensions (0x04)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extensions_cbor: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Self::skip_serializing_extensions")]
+    pub extensions: Option<GetAssertionRequestExtensions>,
 
     /// options (0x05)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -120,13 +126,21 @@ pub struct Ctap2GetAssertionRequest {
     pub pin_auth_proto: Option<u32>,
 }
 
+impl Ctap2GetAssertionRequest {
+    pub fn skip_serializing_extensions(extensions: &Option<GetAssertionRequestExtensions>) -> bool {
+        extensions
+            .as_ref()
+            .map_or(true, |extensions| extensions.skip_serializing())
+    }
+}
+
 impl From<&GetAssertionRequest> for Ctap2GetAssertionRequest {
     fn from(op: &GetAssertionRequest) -> Self {
         Self {
             relying_party_id: op.relying_party_id.clone(),
             client_data_hash: ByteBuf::from(op.hash.clone()),
             allow: op.allow.clone(),
-            extensions_cbor: op.extensions_cbor.clone(),
+            extensions: op.extensions.clone(),
             options: Some(Ctap2GetAssertionOptions {
                 require_user_presence: true,
                 require_user_verification: op.user_verification.is_required(),
@@ -143,7 +157,7 @@ pub struct Ctap2GetAssertionResponse {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credential_id: Option<Ctap2PublicKeyCredentialDescriptor>,
-    pub authenticator_data: ByteBuf,
+    pub authenticator_data: AuthenticatorData<GetAssertionResponseExtensions>,
     pub signature: ByteBuf,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]

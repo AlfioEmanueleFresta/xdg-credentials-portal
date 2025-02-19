@@ -70,7 +70,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         user_verification: UserVerificationRequirement::Preferred,
         algorithms: vec![Ctap2CredentialType::default()],
         exclude: None,
-        extensions_cbor: vec![],
+        extensions: None,
         timeout: TIMEOUT,
     };
 
@@ -93,13 +93,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     .unwrap();
     println!("WebAuthn MakeCredential response: {:?}", response);
 
-    let credential: Ctap2PublicKeyCredentialDescriptor = (&response).try_into().unwrap();
+    let credential: Ctap2PublicKeyCredentialDescriptor =
+        (&response.authenticator_data).try_into().unwrap();
     let get_assertion = GetAssertionRequest {
         relying_party_id: "example.org".to_owned(),
         hash: Vec::from(challenge),
         allow: vec![credential],
         user_verification: UserVerificationRequirement::Discouraged,
-        extensions_cbor: None,
+        extensions: None,
         timeout: TIMEOUT,
     };
 
