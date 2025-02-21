@@ -21,7 +21,7 @@ use crate::proto::ctap2::{
     Ctap2UserVerificationOperation,
 };
 pub use crate::transport::error::{CtapError, Error, PlatformError, TransportError};
-use crate::transport::{Channel, Ctap2AuthTokenPermission};
+use crate::transport::{AuthTokenData, Channel, Ctap2AuthTokenPermission};
 
 macro_rules! handle_errors {
     ($channel: expr, $resp: expr, $uv_auth_used: expr) => {
@@ -162,7 +162,7 @@ where
         pin_provider: &Box<dyn PinProvider>,
     ) -> Result<GetAssertionResponse, Error> {
         let mut ctap2_request: Ctap2GetAssertionRequest = op.into();
-        let response = loop {
+        let mut response = loop {
             let uv_auth_used = user_verification(
                 self,
                 op.user_verification,
@@ -171,6 +171,14 @@ where
                 op.timeout,
             )
             .await?;
+
+            if let Some(auth_data) = self.get_auth_data() {
+                ctap2_request
+                    .extensions
+                    .as_mut()
+                    .map(|e| e.calculate_hmac(auth_data));
+            }
+
             handle_errors!(
                 self,
                 self.ctap2_get_assertion(&ctap2_request, op.timeout).await,
@@ -178,11 +186,26 @@ where
             )
         }?;
         let count = response.credentials_count.unwrap_or(1);
+        if let Some(auth_data) = self.get_auth_data() {
+            response
+                .authenticator_data
+                .extensions
+                .as_mut()
+                .map(|x| x.decrypt_hmac_output(&auth_data));
+        }
         let mut assertions = vec![response];
         for i in 1..count {
             debug!({ i }, "Fetching additional credential");
             // GetNextAssertion doesn't use PinUVAuthToken, so we don't need to check uv_auth_used here
-            assertions.push(self.ctap2_get_next_assertion(op.timeout).await?);
+            let mut response = self.ctap2_get_next_assertion(op.timeout).await?;
+            if let Some(auth_data) = self.get_auth_data() {
+                response
+                    .authenticator_data
+                    .extensions
+                    .as_mut()
+                    .map(|x| x.decrypt_hmac_output(&auth_data));
+            }
+            assertions.push(response);
         }
         Ok(assertions.as_slice().into())
     }
@@ -325,7 +348,7 @@ where
     let skip_uv = !ctap2_request.can_use_uv(&get_info_response);
 
     let mut uv_blocked = false;
-    let (uv_proto, token_response, shared_secret) = loop {
+    let (uv_proto, token_response, shared_secret, public_key) = loop {
         let uv_operation = get_info_response
             .uv_operation(uv_blocked || skip_uv)
             .ok_or_else(|| {
@@ -373,14 +396,14 @@ where
             Ctap2UserVerificationOperation::GetPinToken => {
                 Ctap2ClientPinRequest::new_get_pin_token(
                     uv_proto.version(),
-                    public_key,
+                    public_key.clone(),
                     &uv_proto.encrypt(&shared_secret, &pin_hash(&pin.unwrap()))?,
                 )
             }
             Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingPinWithPermissions => {
                 Ctap2ClientPinRequest::new_get_pin_token_with_perm(
                     uv_proto.version(),
-                    public_key,
+                    public_key.clone(),
                     &uv_proto.encrypt(&shared_secret, &pin_hash(&pin.unwrap()))?,
                     ctap2_request.permissions(),
                     ctap2_request.permissions_rpid(),
@@ -389,7 +412,7 @@ where
             Ctap2UserVerificationOperation::GetPinUvAuthTokenUsingUvWithPermissions => {
                 Ctap2ClientPinRequest::new_get_uv_token_with_perm(
                     uv_proto.version(),
-                    public_key,
+                    public_key.clone(),
                     ctap2_request.permissions(),
                     ctap2_request.permissions_rpid(),
                 )
@@ -398,7 +421,7 @@ where
 
         match channel.ctap2_client_pin(&token_request, timeout).await {
             Ok(t) => {
-                break (uv_proto, t, shared_secret);
+                break (uv_proto, t, shared_secret, public_key);
             }
             // Internal retry, because we otherwise can't fall back to PIN, if the UV is blocked
             Err(Error::Ctap(CtapError::UvBlocked)) => {
@@ -424,7 +447,16 @@ where
         ctap2_request.permissions(),
         ctap2_request.permissions_rpid(),
     );
-    channel.store_uv_auth_token(token_identifier, &uv_auth_token);
+
+    // Storing auth token for later (re)use, or for calculating HMAC secrects, etc.
+    let auth_token_data = AuthTokenData {
+        shared_secret: shared_secret.to_vec(),
+        permission: token_identifier,
+        pin_uv_auth_token: uv_auth_token.clone(),
+        protocol_version: uv_proto.version(),
+        key_agreement: public_key,
+    };
+    channel.store_auth_data(auth_token_data);
 
     // If successful, the platform creates the pinUvAuthParam parameter by calling
     // authenticate(pinUvAuthToken, clientDataHash), and goes to Step 1.1.1.
