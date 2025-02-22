@@ -8,9 +8,10 @@ use crate::{
         Ctap2UserVerifiableRequest,
     },
     transport::{
-        error::{CtapError, Error},
+        error::{CtapError, Error, PlatformError},
         Channel,
     },
+    unwrap_field,
     webauthn::{handle_errors, user_verification, UsedPinUvAuthToken},
 };
 use async_trait::async_trait;
@@ -91,9 +92,8 @@ where
             )
         }?;
         let metadata = Ctap2CredentialManagementMetadata::new(
-            resp.existing_resident_credentials_count.unwrap(),
-            resp.max_possible_remaining_resident_credentials_count
-                .unwrap(),
+            unwrap_field!(resp.existing_resident_credentials_count),
+            unwrap_field!(resp.max_possible_remaining_resident_credentials_count),
         );
         Ok(metadata)
     }
@@ -122,8 +122,11 @@ where
             )
         }?;
         Ok((
-            Ctap2RPData::new(resp.rp.unwrap(), resp.rp_id_hash.unwrap().to_vec()),
-            resp.total_rps.unwrap(),
+            Ctap2RPData::new(
+                unwrap_field!(resp.rp),
+                unwrap_field!(resp.rp_id_hash).to_vec(),
+            ),
+            unwrap_field!(resp.total_rps),
         ))
     }
 
@@ -151,8 +154,8 @@ where
             )
         }?;
         Ok(Ctap2RPData::new(
-            resp.rp.unwrap(),
-            resp.rp_id_hash.unwrap().to_vec(),
+            unwrap_field!(resp.rp),
+            unwrap_field!(resp.rp_id_hash).to_vec(),
         ))
     }
 
@@ -181,13 +184,13 @@ where
             )
         }?;
         let cred = Ctap2CredentialData::new(
-            resp.user.unwrap(),
-            resp.credential_id.unwrap(),
-            resp.public_key.unwrap(),
-            resp.cred_protect.unwrap(),
+            unwrap_field!(resp.user),
+            unwrap_field!(resp.credential_id),
+            unwrap_field!(resp.public_key),
+            unwrap_field!(resp.cred_protect),
             resp.large_blob_key.map(|x| x.into_vec()),
         );
-        let total_creds = resp.total_credentials.unwrap();
+        let total_creds = unwrap_field!(resp.total_credentials);
         Ok((cred, total_creds))
     }
 
@@ -215,10 +218,10 @@ where
             )
         }?;
         let cred = Ctap2CredentialData::new(
-            resp.user.unwrap(),
-            resp.credential_id.unwrap(),
-            resp.public_key.unwrap(),
-            resp.cred_protect.unwrap(),
+            unwrap_field!(resp.user),
+            unwrap_field!(resp.credential_id),
+            unwrap_field!(resp.public_key),
+            unwrap_field!(resp.cred_protect),
             resp.large_blob_key.map(|x| x.into_vec()),
         );
         Ok(cred)

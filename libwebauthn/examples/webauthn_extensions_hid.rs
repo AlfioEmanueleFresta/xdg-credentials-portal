@@ -2,11 +2,13 @@ use std::convert::TryInto;
 use std::error::Error;
 use std::time::Duration;
 
+use ctap_types::ctap2::credential_management::CredentialProtectionPolicy;
 use rand::{thread_rng, Rng};
 use tracing_subscriber::{self, EnvFilter};
 
 use libwebauthn::ops::webauthn::{
-    GetAssertionRequest, MakeCredentialRequest, UserVerificationRequirement,
+    GetAssertionRequest, GetAssertionRequestExtensions, MakeCredentialRequest,
+    MakeCredentialsRequestExtensions, UserVerificationRequirement,
 };
 use libwebauthn::pin::{PinProvider, StdinPromptPinProvider};
 use libwebauthn::proto::ctap2::{
@@ -38,6 +40,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let pin_provider: Box<dyn PinProvider> = Box::new(StdinPromptPinProvider::new());
 
+    let extensions = MakeCredentialsRequestExtensions {
+        cred_protect: Some(CredentialProtectionPolicy::Required),
+        cred_blob: Some(r"My own little blob".into()),
+        large_blob_key: None,
+        min_pin_length: Some(true),
+        hmac_secret: Some(true),
+    };
+
     for mut device in devices {
         println!("Selected HID authenticator: {}", &device);
         device.wink(TIMEOUT).await?;
@@ -50,11 +60,11 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             hash: Vec::from(challenge),
             relying_party: Ctap2PublicKeyCredentialRpEntity::new("example.org", "example.org"),
             user: Ctap2PublicKeyCredentialUserEntity::new(&user_id, "mario.rossi", "Mario Rossi"),
-            require_resident_key: false,
+            require_resident_key: true,
             user_verification: UserVerificationRequirement::Preferred,
             algorithms: vec![Ctap2CredentialType::default()],
             exclude: None,
-            extensions: None,
+            extensions: Some(extensions.clone()),
             timeout: TIMEOUT,
         };
 
@@ -75,7 +85,11 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             };
         }
         .unwrap();
-        println!("WebAuthn MakeCredential response: {:?}", response);
+        // println!("WebAuthn MakeCredential response: {:?}", response);
+        println!(
+            "WebAuthn MakeCredential extensions: {:?}",
+            response.authenticator_data.extensions
+        );
 
         let credential: Ctap2PublicKeyCredentialDescriptor =
             (&response.authenticator_data).try_into().unwrap();
@@ -84,7 +98,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             hash: Vec::from(challenge),
             allow: vec![credential],
             user_verification: UserVerificationRequirement::Discouraged,
-            extensions: None,
+            extensions: Some(GetAssertionRequestExtensions {
+                cred_blob: Some(true),
+            }),
             timeout: TIMEOUT,
         };
 
@@ -105,7 +121,19 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             };
         }
         .unwrap();
-        println!("WebAuthn GetAssertion response: {:?}", response);
+        // println!("WebAuthn GetAssertion response: {:?}", response);
+        println!(
+            "WebAuthn GetAssertion extensions: {:?}",
+            response.assertions[0].authenticator_data.extensions
+        );
+        let blob = if let Some(ext) = &response.assertions[0].authenticator_data.extensions {
+            ext.cred_blob
+                .clone()
+                .map(|x| String::from_utf8_lossy(&x).to_string())
+        } else {
+            None
+        };
+        println!("Credential blob: {blob:?}");
     }
 
     Ok(())
