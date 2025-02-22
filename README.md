@@ -51,9 +51,9 @@ After cloning, you can try out one the libwebauthn examples:
 ```
 $ cd libwebauthn
 $ git submodule update --init
-$ cargo run --example u2f_hid
-$ cargo run --example u2f_ble
 $ cargo run --example webauthn_hid
+$ cargo run --example webauthn_cable
+$ cargo run --example u2f_hid
 ```
 
 ## Contributing
