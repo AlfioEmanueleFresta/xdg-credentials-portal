@@ -47,7 +47,7 @@ _Looking for the D-Bus API proposal?_ Check out [platform-api][linux-credentials
 
 ## Example programs
 
-After cloning, you can try out one the libwebauthn examples:
+After cloning, you can try out [one of the libwebauthn examples](libwebauthn/examples):
 ```
 $ cd libwebauthn
 $ git submodule update --init
