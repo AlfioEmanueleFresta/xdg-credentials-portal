@@ -1,4 +1,4 @@
-use ctap_types::cose::PublicKey;
+use cosey::PublicKey;
 use serde_bytes::ByteBuf;
 use serde_indexed::{DeserializeIndexed, SerializeIndexed};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -213,27 +213,22 @@ pub enum Ctap2PinUvAuthProtocolCommand {
 #[serde_indexed(offset = 1)]
 pub struct Ctap2ClientPinResponse {
     /// keyAgreement (0x01)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_agreement: Option<PublicKey>,
 
     /// pinUvAuthToken (0x02)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pin_uv_auth_token: Option<ByteBuf>,
 
     /// pinRetries (0x03)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pin_retries: Option<u32>,
 
     /// powerCycleState (0x04)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub power_cycle_state: Option<bool>,
 
     /// uvRetries (0x05)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uv_retries: Option<u32>,
 }

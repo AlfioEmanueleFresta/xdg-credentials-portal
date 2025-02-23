@@ -1,5 +1,5 @@
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use ctap_types::cose::PublicKey;
+use cosey::PublicKey;
 use serde::{
     de::{DeserializeOwned, Error as DesError, Visitor},
     ser::Error as SerError,

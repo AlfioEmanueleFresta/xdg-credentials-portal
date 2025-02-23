@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use ctap_types::cose;
+use cosey as cose;
 use serde_bytes::ByteBuf;
 use serde_cbor::to_vec;
 use sha2::{Digest, Sha256};

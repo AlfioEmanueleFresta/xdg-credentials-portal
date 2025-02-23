@@ -5,7 +5,7 @@ use super::transport::error::Error;
 use aes::cipher::{block_padding::NoPadding, BlockDecryptMut};
 use async_trait::async_trait;
 use cbc::cipher::{BlockEncryptMut, KeyIvInit};
-use ctap_types::cose;
+use cosey as cose;
 use hkdf::Hkdf;
 use hmac::Mac;
 use p256::{
