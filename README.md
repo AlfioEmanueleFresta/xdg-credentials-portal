@@ -45,6 +45,17 @@ _Looking for the D-Bus API proposal?_ Check out [platform-api][linux-credentials
 | **FIDO U2F**         | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) | N/A                                |
 | **WebAuthn (FIDO2)** | 🟢 Supported (via hidapi) | 🟢 Supported (via bluez)   | 🟠 Planned ([#5](#5)) | 🟠 Planned ([#4][#4]) | 🟠 Partly implemented ([#31][#31]) |
 
+## Example programs
+
+After cloning, you can try out [one of the libwebauthn examples](libwebauthn/examples):
+```
+$ cd libwebauthn
+$ git submodule update --init
+$ cargo run --example webauthn_hid
+$ cargo run --example webauthn_cable
+$ cargo run --example u2f_hid
+```
+
 ## Contributing
 
 We welcome contributions!
