@@ -8,36 +8,30 @@ use std::time::Duration;
 #[serde_indexed(offset = 1)]
 pub struct Ctap2BioEnrollmentRequest {
     // modality (0x01) 	Unsigned Integer 	Optional 	The user verification modality being requested
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modality: Option<Ctap2BioEnrollmentModality>,
 
     // subCommand (0x02) 	Unsigned Integer 	Optional 	The authenticator user verification sub command currently being requested
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subcommand: Option<Ctap2BioEnrollmentSubcommand>,
 
     // subCommandParams (0x03) 	CBOR Map 	Optional 	Map of subCommands parameters. This parameter MAY be omitted when the subCommand does not take any arguments.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subcommand_params: Option<Ctap2BioEnrollmentParams>,
 
     // pinUvAuthProtocol (0x04) 	Unsigned Integer 	Optional 	PIN/UV protocol version chosen by the platform.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protocol: Option<Ctap2PinUvAuthProtocol>,
 
     // pinUvAuthParam (0x05) 	Byte String 	Optional 	First 16 bytes of HMAC-SHA-256 of contents using pinUvAuthToken.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uv_auth_param: Option<ByteBuf>,
 
     // getModality (0x06) 	Boolean 	Optional 	Get the user verification type modality. This MUST be set to true.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub get_modality: Option<bool>,
 
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "always_skip_bool")]
     pub use_legacy_preview: bool,
 }
 
@@ -56,15 +50,12 @@ pub enum Ctap2BioEnrollmentSubcommand {
 #[derive(Debug, Clone, SerializeIndexed)]
 #[serde_indexed(offset = 1)]
 pub struct Ctap2BioEnrollmentParams {
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     template_id: Option<ByteBuf>,
 
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     template_friendly_name: Option<String>,
 
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     timeout_milliseconds: Option<u64>,
 }
@@ -73,42 +64,34 @@ pub struct Ctap2BioEnrollmentParams {
 #[serde_indexed(offset = 1)]
 pub struct Ctap2BioEnrollmentResponse {
     // modality (0x01) 	Unsigned Integer 	Optional 	The user verification modality.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modality: Option<Ctap2BioEnrollmentModality>,
 
     // fingerprintKind (0x02) 	Unsigned Integer 	Optional 	Indicates the type of fingerprint sensor. For touch type sensor, its value is 1. For swipe type sensor its value is 2.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fingerprint_kind: Option<Ctap2BioEnrollmentFingerprintKind>,
 
     // maxCaptureSamplesRequiredForEnroll (0x03) 	Unsigned Integer 	Optional 	Indicates the maximum good samples required for enrollment.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_capture_samples_required_for_enroll: Option<u64>,
 
     // templateId (0x04) 	Byte String 	Optional 	Template Identifier.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_id: Option<ByteBuf>,
 
     // lastEnrollSampleStatus (0x05) 	Unsigned Integer 	Optional 	Last enrollment sample status.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_enroll_sample_status: Option<Ctap2LastEnrollmentSampleStatus>,
 
     // remainingSamples (0x06) 	Unsigned Integer 	Optional 	Number of more sample required for enrollment to complete
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remaining_samples: Option<u64>,
 
     // templateInfos (0x07) 	CBOR ARRAY 	Optional 	Array of templateInfo’s
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_infos: Option<Vec<Ctap2BioEnrollmentTemplateId>>,
 
     // maxTemplateFriendlyName (0x08) 	Unsigned Integer 	Optional 	Indicates the maximum number of bytes the authenticator will accept as a templateFriendlyName.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_template_friendly_name: Option<u64>,
 }
@@ -117,12 +100,10 @@ pub struct Ctap2BioEnrollmentResponse {
 #[serde_indexed(offset = 1)]
 pub struct Ctap2BioEnrollmentTemplateId {
     // templateId (0x01) 	Byte String 	Required 	Template Identifier.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_id: Option<ByteBuf>,
 
     // templateFriendlyName (0x02) 	String 	Optional 	Template Friendly Name.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_friendly_name: Option<String>,
 }
@@ -280,4 +261,10 @@ impl Ctap2BioEnrollmentRequest {
             use_legacy_preview: false,
         }
     }
+}
+
+// Required by serde_indexed, as serde(skip) isn't supported yet:
+//   https://github.com/trussed-dev/serde-indexed/pull/14
+fn always_skip_bool(_v: &bool) -> bool {
+    true
 }

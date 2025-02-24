@@ -12,17 +12,14 @@ pub struct Ctap2AuthenticatorConfigRequest {
     pub subcommand: Ctap2AuthenticatorConfigCommand,
 
     // subCommandParams (0x02)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subcommand_params: Option<Ctap2AuthenticatorConfigParams>,
 
     ///pinUvAuthProtocol (0x03)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protocol: Option<Ctap2PinUvAuthProtocol>,
 
     /// pinUvAuthParam (0x04):
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uv_auth_param: Option<ByteBuf>,
 }
@@ -112,17 +109,14 @@ pub enum Ctap2AuthenticatorConfigParams {
 #[serde_indexed(offset = 1)]
 pub struct Ctap2SetMinPINLengthParams {
     // newMinPINLength (0x01)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_min_pin_length: Option<u64>,
 
     // minPinLengthRPIDs (0x02)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_pin_length_rpids: Option<Vec<String>>,
 
     // forceChangePin (0x03)
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub force_change_pin: Option<bool>,
 }

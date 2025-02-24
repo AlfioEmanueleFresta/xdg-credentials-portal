@@ -1,6 +1,6 @@
 [submodule "solo/src/ext"]
 	path = solo/src/ext
 	url = https://github.com/AlfioEmanueleFresta/solo.git
-[submodule "ctap-types"]
-	path = ctap-types
-	url = https://github.com/AlfioEmanueleFresta/ctap-types.git
+[submodule "cosey"]
+	path = cosey
+	url = https://github.com/AlfioEmanueleFresta/cosey.git

@@ -154,30 +154,31 @@ impl From<&GetAssertionRequest> for Ctap2GetAssertionRequest {
 #[derive(Debug, Clone, DeserializeIndexed)]
 #[serde_indexed(offset = 1)]
 pub struct Ctap2GetAssertionResponse {
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credential_id: Option<Ctap2PublicKeyCredentialDescriptor>,
+
     pub authenticator_data: AuthenticatorData<GetAssertionResponseExtensions>,
+
     pub signature: ByteBuf,
-    #[serde(default)]
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<Ctap2PublicKeyCredentialUserEntity>,
-    #[serde(default)]
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credentials_count: Option<u32>,
-    #[serde(default)]
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_selected: Option<bool>,
-    #[serde(default)]
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub large_blob_key: Option<ByteBuf>,
-    #[serde(default)]
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unsigned_extension_outputs: Option<BTreeMap<Value, Value>>,
-    #[serde(default)]
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enterprise_attestation: Option<bool>,
-    #[serde(default)]
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_statement: Option<Ctap2AttestationStatement>,
 }

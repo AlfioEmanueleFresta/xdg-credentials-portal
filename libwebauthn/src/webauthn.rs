@@ -3,7 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tracing::{debug, error, info, instrument, trace, warn};
 
-use ctap_types::cose::PublicKey;
+use cosey::PublicKey;
 
 use crate::fido::FidoProtocol;
 use crate::ops::u2f::{RegisterRequest, SignRequest, UpgradableResponse};

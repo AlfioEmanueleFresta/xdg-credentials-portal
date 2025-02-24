@@ -55,12 +55,10 @@ pub struct CableQrCode {
     /// Key 2: the number of assigned tunnel server domains known to this implementation.
     pub known_tunnel_domains_count: u8,
     /// Key 3: (optional) the current time in epoch seconds.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_time: Option<u64>,
     /// Key 4: (optional) a boolean that is true if the device displaying the QR code can perform state-
     ///   assisted transactions.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state_assisted: Option<bool>,
     /// Key 5: either the string “ga” to hint that a getAssertion will follow, or “mc” to hint that a
@@ -69,7 +67,6 @@ pub struct CableQrCode {
     ///   prior to the authenticator receiving any CTAP message. While this hint SHOULD be as accurate as
     ///   possible, it does not constrain the subsequent CTAP messages that the platform may send.
     pub operation_hint: QrCodeOperationHint,
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supports_non_discoverable_mc: Option<bool>,
 }
